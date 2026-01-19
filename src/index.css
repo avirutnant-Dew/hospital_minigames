@@ -1,0 +1,268 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Kanit:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Smart Hospital 2026 Theme - Futuristic Medical */
+    --background: 220 25% 6%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 25% 10%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 25% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Primary: Deep Medical Blue */
+    --primary: 217 91% 50%;
+    --primary-foreground: 210 40% 98%;
+
+    /* Secondary: Cyan Tech Accent */
+    --secondary: 190 95% 45%;
+    --secondary-foreground: 220 25% 6%;
+
+    --muted: 220 20% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    /* Accent: Glowing Cyan */
+    --accent: 185 100% 50%;
+    --accent-foreground: 220 25% 6%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 18%;
+    --ring: 217 91% 50%;
+
+    --radius: 0.75rem;
+
+    /* Team Colors */
+    --team-alpha: 217 91% 60%;
+    --team-beta: 160 84% 45%;
+    --team-gamma: 38 92% 55%;
+    --team-delta: 0 84% 55%;
+    --team-omega: 265 85% 60%;
+
+    /* Strategy Colors */
+    --grow-plus: 160 84% 45%;
+    --safe-act: 38 92% 55%;
+    --pro-care: 280 85% 60%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 50%) 0%, hsl(190 95% 45%) 100%);
+    --gradient-glow: linear-gradient(180deg, hsl(185 100% 50% / 0.3) 0%, transparent 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(220 25% 8%) 0%, hsl(220 25% 4%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(220 25% 12%) 0%, hsl(220 25% 8%) 100%);
+
+    /* Shadows */
+    --shadow-glow: 0 0 40px hsl(185 100% 50% / 0.4);
+    --shadow-primary: 0 0 30px hsl(217 91% 50% / 0.3);
+    --shadow-card: 0 10px 40px hsl(0 0% 0% / 0.5);
+
+    --sidebar-background: 220 25% 8%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 50%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 220 25% 15%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 217 91% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-lg;
+    background: linear-gradient(145deg, hsl(var(--card) / 0.9) 0%, hsl(var(--card) / 0.6) 100%);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 20px hsl(var(--accent)), 0 0 40px hsl(var(--accent) / 0.5);
+  }
+
+  .glow-border {
+    box-shadow: 0 0 20px hsl(var(--accent) / 0.3), inset 0 0 20px hsl(var(--accent) / 0.1);
+  }
+
+  .neon-line {
+    @apply h-px bg-gradient-to-r from-transparent via-accent to-transparent opacity-60;
+  }
+
+  .team-badge {
+    @apply px-3 py-1 rounded-full text-sm font-semibold uppercase tracking-wide;
+  }
+
+  .dice-button {
+    @apply relative overflow-hidden transition-all duration-300;
+    background: var(--gradient-primary);
+  }
+
+  .dice-button:hover {
+    @apply scale-105;
+    box-shadow: var(--shadow-glow);
+  }
+
+  .ambulance-token {
+    @apply transition-all duration-1000 ease-out;
+    filter: drop-shadow(0 0 10px currentColor);
+  }
+
+  .floating-emoji {
+    animation: floatUp 3s ease-out forwards;
+  }
+
+  .card-flip {
+    transform-style: preserve-3d;
+    transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .card-flip.flipped {
+    transform: rotateY(180deg);
+  }
+
+  .news-ticker {
+    @apply bg-primary/20 border-y border-primary/30;
+    animation: ticker 20s linear infinite;
+  }
+
+  .pulse-ring {
+    @apply absolute inset-0 rounded-full;
+    animation: pulseRing 2s ease-out infinite;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--accent) / 0.1) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-primary);
+  }
+
+  .border-gradient {
+    border-image: var(--gradient-primary) 1;
+  }
+}
+
+@keyframes floatUp {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-200px) scale(1.5);
+  }
+}
+
+@keyframes ticker {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes bounce-soft {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes rotate-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-bounce-soft {
+  animation: bounce-soft 2s ease-in-out infinite;
+}
+
+.animate-rotate-slow {
+  animation: rotate-slow 20s linear infinite;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.5s ease-out;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out;
+}
