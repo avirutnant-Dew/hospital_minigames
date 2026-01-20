@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { ProCareGame, ProCareGameType, PRO_CARE_CONFIG, selectRandomProCareGame } from "./types";
+import { ProCareGame, ProCareGameType, PRO_CARE_CONFIG, selectRandomProCareGame, EmpathyScenario, EMPATHY_SCENARIOS } from "./types";
 import { HeartCollectorMainDisplay, HeartCollectorGame } from "./HeartCollectorGame";
 import { EmpathyEchoMainDisplay, EmpathyEchoGame } from "./EmpathyEchoGame";
 import { SmileSparkleMainDisplay, SmileSparkleGame } from "./SmileSparkleGame";
@@ -13,18 +13,36 @@ interface Props {
   playerNickname?: string;
   isMainStage?: boolean;
   onGameEnd?: (scoreMB: number) => void;
+  forcedGameType?: ProCareGameType;
 }
 
-export function ProCareController({ teamId, playerNickname, isMainStage = false, onGameEnd }: Props) {
+export function ProCareController({ teamId, playerNickname, isMainStage = false, onGameEnd, forcedGameType }: Props) {
   const [activeGame, setActiveGame] = useState<ProCareGame | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
 
   // stats
+  const [csiScore, setCsiScore] = useState(70);
   const [hearts, setHearts] = useState(0);
   const [correctVotes, setCorrectVotes] = useState(0);
+  const [totalVotes, setTotalVotes] = useState(0);
   const [smileTaps, setSmileTaps] = useState(0);
+  const [customersHelped, setCustomersHelped] = useState(0);
+  const [currentScenario, setCurrentScenario] = useState<EmpathyScenario | null>(null);
+
+  // ======================
+  // SCENARIO MANAGEMENT
+  // ======================
+  useEffect(() => {
+    if (activeGame?.game_type === 'EMPATHY_ECHO') {
+      // Pick a random scenario if none active
+      if (!currentScenario) {
+        const random = EMPATHY_SCENARIOS[Math.floor(Math.random() * EMPATHY_SCENARIOS.length)];
+        setCurrentScenario(random);
+      }
+    }
+  }, [activeGame?.id, currentScenario]);
 
   // ======================
   // TIMER
@@ -82,12 +100,25 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
       return;
     }
 
-    setActiveGame(data);
+    const game = data as unknown as ProCareGame;
+    setActiveGame(game);
     setTimeRemaining(duration);
     setHearts(0);
     setCorrectVotes(0);
+    setTotalVotes(0);
     setSmileTaps(0);
+    setCustomersHelped(0);
+    setCsiScore(70);
   };
+
+  // ======================
+  // AUTO START
+  // ======================
+  useEffect(() => {
+    if (forcedGameType && isMainStage && !activeGame && !isLoading) {
+      startGame(forcedGameType);
+    }
+  }, [forcedGameType, isMainStage, activeGame, isLoading]);
 
   // ======================
   // END GAME → คิด MB
@@ -128,7 +159,33 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
     setShowSummary(true);
     setActiveGame(null);
     onGameEnd?.(scoreMB);
-  }, [activeGame, hearts, correctVotes, smileTaps]);
+  }, [activeGame, hearts, correctVotes, smileTaps, teamId, onGameEnd]);
+
+  const handleVote = (correct: boolean) => {
+    setTotalVotes(v => v + 1);
+    if (correct) {
+      setCorrectVotes(v => v + 1);
+      setCsiScore(s => Math.min(100, s + PRO_CARE_CONFIG.EMPATHY_ECHO.csiPerCorrect));
+    }
+    // Pick next scenario after a delay
+    setTimeout(() => {
+      const next = EMPATHY_SCENARIOS[Math.floor(Math.random() * EMPATHY_SCENARIOS.length)];
+      setCurrentScenario(next);
+    }, 2000);
+  };
+
+  const handleHeartCollect = () => {
+    setHearts(h => h + 1);
+    setCsiScore(s => Math.min(100, s + PRO_CARE_CONFIG.HEART_COLLECTOR.csiPerHeart));
+  };
+
+  const handleSmileTap = () => {
+    setSmileTaps(t => t + 1);
+    if ((smileTaps + 1) % PRO_CARE_CONFIG.SMILE_SPARKLE.tapsPerSmile === 0) {
+      setCustomersHelped(c => c + 1);
+      setCsiScore(s => Math.min(100, s + PRO_CARE_CONFIG.SMILE_SPARKLE.csiPerSmile));
+    }
+  };
 
   // ======================
   // PLAYER VIEW
@@ -147,8 +204,9 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
       <>
         {activeGame.game_type === "HEART_COLLECTOR" && (
           <HeartCollectorGame
-            onCollect={() => setHearts((h) => h + 1)}
+            onCollect={handleHeartCollect}
             heartsCollected={hearts}
+            csiScore={csiScore}
             timeRemaining={timeRemaining}
             isActive={timeRemaining > 0}
           />
@@ -156,15 +214,20 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
 
         {activeGame.game_type === "EMPATHY_ECHO" && (
           <EmpathyEchoGame
-            onVote={(correct) => correct && setCorrectVotes((c) => c + 1)}
+            onVote={handleVote}
+            csiScore={csiScore}
             timeRemaining={timeRemaining}
             isActive={timeRemaining > 0}
+            currentScenario={currentScenario}
           />
         )}
 
         {activeGame.game_type === "SMILE_SPARKLE" && (
           <SmileSparkleGame
-            onTap={() => setSmileTaps((s) => s + 1)}
+            onTap={handleSmileTap}
+            smileTaps={smileTaps}
+            customersHelped={customersHelped}
+            csiScore={csiScore}
             timeRemaining={timeRemaining}
             isActive={timeRemaining > 0}
           />
@@ -191,13 +254,30 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
       ) : (
         <>
           {activeGame.game_type === "HEART_COLLECTOR" && (
-            <HeartCollectorMainDisplay heartsCollected={hearts} timeRemaining={timeRemaining} />
+            <HeartCollectorMainDisplay
+              heartsCollected={hearts}
+              csiScore={csiScore}
+              timeRemaining={timeRemaining}
+            />
           )}
           {activeGame.game_type === "EMPATHY_ECHO" && (
-            <EmpathyEchoMainDisplay correctVotes={correctVotes} timeRemaining={timeRemaining} />
+            <EmpathyEchoMainDisplay
+              currentScenario={currentScenario}
+              votesA={correctVotes} // Using correctVotes as A for display simulation
+              votesB={totalVotes - correctVotes} // Simulation
+              csiScore={csiScore}
+              timeRemaining={timeRemaining}
+              scenarioTimeLeft={12} // Fixed simulation for display
+            />
           )}
           {activeGame.game_type === "SMILE_SPARKLE" && (
-            <SmileSparkleMainDisplay smileTaps={smileTaps} timeRemaining={timeRemaining} />
+            <SmileSparkleMainDisplay
+              smileTaps={smileTaps}
+              customersHelped={customersHelped}
+              currentCustomer={null}
+              csiScore={csiScore}
+              timeRemaining={timeRemaining}
+            />
           )}
         </>
       )}
@@ -205,9 +285,11 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
       <ProCareSummaryModal
         open={showSummary}
         onOpenChange={setShowSummary}
+        csiScore={csiScore}
         heartsCollected={hearts}
+        customersHelped={customersHelped}
         correctVotes={correctVotes}
-        smileTaps={smileTaps}
+        totalVotes={totalVotes}
         gameType={activeGame?.game_type || "HEART_COLLECTOR"}
       />
     </div>

@@ -18,6 +18,7 @@ interface SafeActControllerProps {
   isMainStage?: boolean;
   initialGame?: SafeActGame | null;
   onGameEnd?: (finalScore: number) => void;
+  forcedGameType?: SafeActGameType;
 }
 
 /* ================= CONTROLLER ================= */
@@ -28,6 +29,7 @@ export function SafeActController({
   isMainStage = false,
   initialGame,
   onGameEnd,
+  forcedGameType,
 }: SafeActControllerProps) {
   const [activeGame, setActiveGame] = useState<SafeActGame | null>(initialGame || null);
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -40,6 +42,11 @@ export function SafeActController({
 
   const [isLoading, setIsLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+
+  // Critical Sync specific state
+  const [ekgValue, setEkgValue] = useState(50);
+  const [secondsOutsideZone, setSecondsOutsideZone] = useState(0);
+  const [isInSafeZone, setIsInSafeZone] = useState(true);
 
   /* ================= INIT ================= */
 
@@ -144,6 +151,56 @@ export function SafeActController({
     [teamId],
   );
 
+  /* ================= AUTO START ================= */
+  useEffect(() => {
+    if (forcedGameType && isMainStage && !activeGame && !isLoading) {
+      startGame(forcedGameType);
+    }
+  }, [forcedGameType, isMainStage, activeGame, isLoading, startGame]);
+
+  /* ================= CRITICAL SYNC LOGIC ================= */
+  useEffect(() => {
+    if (!activeGame || activeGame.game_type !== "CRITICAL_SYNC" || !isMainStage) return;
+
+    const { safeZoneMin, safeZoneMax } = SAFE_ACT_CONFIG.CRITICAL_SYNC;
+
+    const interval = setInterval(() => {
+      setEkgValue((prev) => {
+        // Naturally drift
+        const drift = (Math.random() - 0.5) * 4;
+        const newValue = Math.max(0, Math.min(100, prev + drift));
+
+        const inZone = newValue >= safeZoneMin && newValue <= safeZoneMax;
+        setIsInSafeZone(inZone);
+
+        if (!inZone) {
+          setSecondsOutsideZone(s => s + 1);
+        } else {
+          setSecondsOutsideZone(0);
+        }
+
+        return newValue;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeGame?.id, isMainStage]);
+
+  const handleCriticalSyncTap = useCallback(() => {
+    if (!activeGame || activeGame.game_type !== "CRITICAL_SYNC") return;
+
+    setEkgValue(prev => {
+      const { safeZoneMin, safeZoneMax } = SAFE_ACT_CONFIG.CRITICAL_SYNC;
+      const center = (safeZoneMin + safeZoneMax) / 2;
+
+      // Pull towards center
+      const pull = (center - prev) * 0.2;
+      return Math.max(0, Math.min(100, prev + pull + (Math.random() - 0.5) * 5));
+    });
+
+    setTotalCorrect(c => c + 1);
+  }, [activeGame]);
+
   /* ================= END GAME ================= */
 
   const endGame = useCallback(async () => {
@@ -218,6 +275,16 @@ export function SafeActController({
           />
         )}
 
+        {activeGame.game_type === "CRITICAL_SYNC" && (
+          <CriticalSyncGame
+            ekgValue={ekgValue}
+            timeRemaining={timeRemaining}
+            isActive={timeRemaining > 0}
+            isInSafeZone={isInSafeZone}
+            onTap={handleCriticalSyncTap}
+          />
+        )}
+
         <SafeActSummaryModal
           open={showSummary}
           onOpenChange={setShowSummary}
@@ -266,7 +333,18 @@ export function SafeActController({
               hazards={hazards}
               hazardsCleared={hazardsCleared}
               timeRemaining={timeRemaining}
+              totalHazards={SAFE_ACT_CONFIG.HAZARD_POPPER.maxHazards}
               isComplete={false}
+            />
+          )}
+
+          {activeGame.game_type === "CRITICAL_SYNC" && (
+            <CriticalSyncMainDisplay
+              ekgValue={ekgValue}
+              timeRemaining={timeRemaining}
+              isInSafeZone={isInSafeZone}
+              secondsOutsideZone={secondsOutsideZone}
+              totalScore={totalCorrect * 100000} // Simple score for now
             />
           )}
         </>

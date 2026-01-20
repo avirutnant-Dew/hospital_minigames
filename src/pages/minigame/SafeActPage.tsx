@@ -10,6 +10,7 @@ export default function SafeActPage() {
   const navigate = useNavigate();
   const teamId = searchParams.get("team") || undefined;
   const playerNickname = searchParams.get("player") || undefined;
+  const forcedGameType = searchParams.get("game") as any;
 
   // Redirect to main stage if no team ID is provided
   useEffect(() => {
@@ -97,6 +98,7 @@ export default function SafeActPage() {
             playerNickname={playerNickname}
             isMainStage={true}
             onGameEnd={handleGameEnd}
+            forcedGameType={forcedGameType}
           />
         </div>
       </div>

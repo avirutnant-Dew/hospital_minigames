@@ -12,6 +12,7 @@ export interface SafeActGame {
   total_wrong: number;
   hazards_cleared: number;
   combo_multiplier: number;
+  safety_score?: number;
   created_at: string;
 }
 

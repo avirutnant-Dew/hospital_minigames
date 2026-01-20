@@ -42,11 +42,12 @@ export default function MiniGameTestPage() {
 
   const runTest = async (gameName: string, path: string, teamId?: string) => {
     setLoading(true);
-    
+
     try {
       // Navigate directly with team ID
+      const separator = path.includes("?") ? "&" : "?";
       if (teamId) {
-        navigate(`${path}&team=${teamId}`);
+        navigate(`${path}${separator}team=${teamId}`);
       } else {
         navigate(path);
       }
@@ -204,21 +205,41 @@ export default function MiniGameTestPage() {
                 <CardTitle>SafeAct (Safety Strategy)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Click to play SafeAct mini-game (3 sub-games: Risk Defender, Critical Sync, Hazard Popper)
-                </p>
-                <div className="grid md:grid-cols-2 gap-2">
+                <div className="space-y-4">
                   {teams.map((team) => (
-                    <Button
-                      key={`safeact-${team.id}`}
-                      onClick={() => runTest("safeact", "/minigame/safeact", team.id)}
-                      disabled={loading}
-                      className="w-full"
-                      variant={testResults[`safeact-${team.id}`] ? "default" : "outline"}
-                    >
-                      {loading ? <Loader2 className="animate-spin mr-2" /> : "🛡️"}
-                      Play with {team.name}
-                    </Button>
+                    <div key={`team-safeact-${team.id}`} className="space-y-2 pb-4 border-b last:border-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="bg-primary/5">
+                          {team.name}
+                        </Badge>
+                      </div>
+                      <div className="grid md:grid-cols-3 gap-2 ml-4">
+                        <Button
+                          onClick={() => runTest("risk-defender", "/minigame/safeact?game=RISK_DEFENDER", team.id)}
+                          disabled={loading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          🛡️ Risk Defender
+                        </Button>
+                        <Button
+                          onClick={() => runTest("critical-sync", "/minigame/safeact?game=CRITICAL_SYNC", team.id)}
+                          disabled={loading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          ⚡ Critical Sync
+                        </Button>
+                        <Button
+                          onClick={() => runTest("hazard-popper", "/minigame/safeact?game=HAZARD_POPPER", team.id)}
+                          disabled={loading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          🎈 Hazard Popper
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </CardContent>
@@ -229,21 +250,41 @@ export default function MiniGameTestPage() {
                 <CardTitle>ProCare (Service Strategy)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Click to play ProCare mini-game (3 sub-games: Heart Collector, Empathy Echo, Smile Sparkle)
-                </p>
-                <div className="grid md:grid-cols-2 gap-2">
+                <div className="space-y-4">
                   {teams.map((team) => (
-                    <Button
-                      key={`procare-${team.id}`}
-                      onClick={() => runTest("procare", "/minigame/procare", team.id)}
-                      disabled={loading}
-                      className="w-full"
-                      variant={testResults[`procare-${team.id}`] ? "default" : "outline"}
-                    >
-                      {loading ? <Loader2 className="animate-spin mr-2" /> : "❤️"}
-                      Play with {team.name}
-                    </Button>
+                    <div key={`team-procare-${team.id}`} className="space-y-2 pb-4 border-b last:border-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="bg-primary/5">
+                          {team.name}
+                        </Badge>
+                      </div>
+                      <div className="grid md:grid-cols-3 gap-2 ml-4">
+                        <Button
+                          onClick={() => runTest("heart-collector", "/minigame/procare?game=HEART_COLLECTOR", team.id)}
+                          disabled={loading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          💕 Heart Collector
+                        </Button>
+                        <Button
+                          onClick={() => runTest("empathy-echo", "/minigame/procare?game=EMPATHY_ECHO", team.id)}
+                          disabled={loading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          💬 Empathy Echo
+                        </Button>
+                        <Button
+                          onClick={() => runTest("smile-sparkle", "/minigame/procare?game=SMILE_SPARKLE", team.id)}
+                          disabled={loading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          😊 Smile Sparkle
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </CardContent>
