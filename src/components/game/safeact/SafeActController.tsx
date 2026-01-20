@@ -152,11 +152,16 @@ export function SafeActController({
   );
 
   /* ================= AUTO START ================= */
+  // Auto-start game if forcedGameType is provided (Test Mode)
   useEffect(() => {
-    if (forcedGameType && !activeGame && !isLoading) {
+    if (!forcedGameType || isLoading) return;
+
+    const needsStart = !activeGame || activeGame.game_type !== forcedGameType;
+
+    if (needsStart) {
       startGame(forcedGameType);
     }
-  }, [forcedGameType, activeGame, isLoading, startGame]);
+  }, [forcedGameType, activeGame?.game_type, isLoading, startGame]);
 
   /* ================= CRITICAL SYNC LOGIC ================= */
   useEffect(() => {
