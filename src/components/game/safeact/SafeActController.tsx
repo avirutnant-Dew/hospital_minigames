@@ -153,10 +153,10 @@ export function SafeActController({
 
   /* ================= AUTO START ================= */
   useEffect(() => {
-    if (forcedGameType && isMainStage && !activeGame && !isLoading) {
+    if (forcedGameType && !activeGame && !isLoading) {
       startGame(forcedGameType);
     }
-  }, [forcedGameType, isMainStage, activeGame, isLoading, startGame]);
+  }, [forcedGameType, activeGame, isLoading, startGame]);
 
   /* ================= CRITICAL SYNC LOGIC ================= */
   useEffect(() => {

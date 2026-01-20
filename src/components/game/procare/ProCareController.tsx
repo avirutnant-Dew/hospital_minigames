@@ -115,10 +115,10 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
   // AUTO START
   // ======================
   useEffect(() => {
-    if (forcedGameType && isMainStage && !activeGame && !isLoading) {
+    if (forcedGameType && !activeGame && !isLoading) {
       startGame(forcedGameType);
     }
-  }, [forcedGameType, isMainStage, activeGame, isLoading]);
+  }, [forcedGameType, activeGame, isLoading]);
 
   // ======================
   // END GAME → คิด MB

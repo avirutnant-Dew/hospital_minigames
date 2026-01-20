@@ -215,40 +215,13 @@ export function GrowPlusController({
     [teamId],
   );
 
-  // Auto-start game if forcedGameType is provided
+  // Auto-start game if forcedGameType is provided (Test Mode)
   useEffect(() => {
-    console.log('GrowPlusController - forcedGameType:', forcedGameType, 'isMainStage:', isMainStage, 'activeGame:', activeGame?.id);
-    if (forcedGameType && isMainStage && !activeGame && !loading) {
-      console.log('Auto-starting game with forcedGameType:', forcedGameType);
-      (async () => {
-        const duration = GAME_CONFIG[forcedGameType].duration;
-        const endsAt = new Date(Date.now() + duration * 1000).toISOString();
-
-        try {
-          const { data, error } = await supabase.from("grow_plus_games").insert({
-            team_id: teamId || null,
-            game_type: forcedGameType,
-            is_active: true,
-            ends_at: endsAt,
-            total_score: 0,
-            combo_multiplier: 1,
-          }).select().single();
-
-          if (error) {
-            console.error('Failed to create game:', error);
-          } else {
-            const game = data as GrowPlusGame;
-            setActiveGame(game);
-            setTotalScore(0);
-            setTimeRemaining(duration);
-            setGameActive(true);
-          }
-        } catch (err) {
-          console.error('Failed to create game:', err);
-        }
-      })();
+    if (forcedGameType && !activeGame && !loading) {
+      console.log('Test Mode: Auto-starting game:', forcedGameType);
+      startGame(forcedGameType);
     }
-  }, [forcedGameType, isMainStage, activeGame, loading, teamId]);
+  }, [forcedGameType, activeGame, loading, startGame]);
 
   /* ---------- END GAME ---------- */
   const endGame = useCallback(async () => {

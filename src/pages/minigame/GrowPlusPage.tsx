@@ -99,9 +99,9 @@ export default function GrowPlusPage() {
 
         {/* Mini-game Content */}
         <div className="flex items-center justify-center min-h-[600px]">
-          <GrowPlusController 
-            teamId={teamId} 
-            isMainStage={true} 
+          <GrowPlusController
+            teamId={teamId}
+            isMainStage={false}
             onGameEnd={handleGameEnd}
             forcedGameType={gameType}
           />
