@@ -23,11 +23,11 @@ interface Props {
   forcedGameType?: GrowPlusGameType; // Force a specific game type (for testing)
 }
 
-export function GrowPlusController({ 
-  teamId, 
+export function GrowPlusController({
+  teamId,
   playerNickname,
-  isMainStage = false, 
-  initialGame, 
+  isMainStage = false,
+  initialGame,
   onGameEnd,
   enableBatchUpdates = true,
   forcedGameType,
@@ -197,7 +197,15 @@ export function GrowPlusController({
 
         if (error) {
           console.error('Failed to create game:', error);
+          setLoading(false);
+          return;
         }
+
+        const game = data as GrowPlusGame;
+        setActiveGame(game);
+        setTotalScore(0);
+        setTimeRemaining(duration);
+        setGameActive(true);
       } catch (err) {
         console.error('Failed to create game:', err);
       }
@@ -217,17 +225,23 @@ export function GrowPlusController({
         const endsAt = new Date(Date.now() + duration * 1000).toISOString();
 
         try {
-          const { error } = await supabase.from("grow_plus_games").insert({
+          const { data, error } = await supabase.from("grow_plus_games").insert({
             team_id: teamId || null,
             game_type: forcedGameType,
             is_active: true,
             ends_at: endsAt,
             total_score: 0,
             combo_multiplier: 1,
-          });
+          }).select().single();
 
           if (error) {
             console.error('Failed to create game:', error);
+          } else {
+            const game = data as GrowPlusGame;
+            setActiveGame(game);
+            setTotalScore(0);
+            setTimeRemaining(duration);
+            setGameActive(true);
           }
         } catch (err) {
           console.error('Failed to create game:', err);
@@ -370,5 +384,68 @@ export function GrowPlusController({
     );
   }
 
-  return null;
+  // ======================
+  // PLAYER VIEW
+  // ======================
+  if (!activeGame) {
+    return (
+      <div className="glass-card p-6 text-center">
+        <Sparkles className="mx-auto w-12 h-12 text-strategy-grow" />
+        <p>รอ Admin เริ่ม GROW+</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {activeGame.game_type === "REVENUE_TAP" && (
+        <RevenueTapGame
+          onTap={handleTap}
+          totalScore={totalScore}
+          timeRemaining={timeRemaining}
+          isActive={gameActive}
+          gameId={activeGame.id}
+          playerNickname={playerNickname}
+          playerCount={playerCount}
+        />
+      )}
+      {activeGame.game_type === "HOSPITAL_NETWORK" && (
+        <HospitalNetworkChain
+          gameId={activeGame.id}
+          teamId={teamId || null}
+          playerNickname={playerNickname || 'Unknown'}
+          onScore={(score) => {
+            setTotalScore((prev) => prev + score);
+            if (enableBatchUpdates && playerNickname) {
+              addAction('SEQUENCE_COMPLETE', score);
+            }
+          }}
+          durationSeconds={timeRemaining}
+          playerCount={playerCount}
+        />
+      )}
+      {activeGame.game_type === "DEPARTMENT_EFFICIENCY" && (
+        <DepartmentEfficiencyChain
+          gameId={activeGame.id}
+          teamId={teamId || null}
+          playerNickname={playerNickname || 'Unknown'}
+          onScore={(score) => {
+            setTotalScore((prev) => prev + score);
+            if (enableBatchUpdates && playerNickname) {
+              addAction('PATHWAY_COMPLETE', score);
+            }
+          }}
+          durationSeconds={timeRemaining}
+          playerCount={playerCount}
+        />
+      )}
+
+      <GameSummaryModal
+        open={showSummary}
+        onOpenChange={setShowSummary}
+        totalRevenue={totalScore}
+        gameType={activeGame.game_type}
+      />
+    </>
+  );
 }
