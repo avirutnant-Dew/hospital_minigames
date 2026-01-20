@@ -247,9 +247,18 @@ export function SafeActController({
   if (!isMainStage) {
     if (!activeGame) {
       return (
-        <div className="glass-card p-8 text-center">
-          <Shield className="w-16 h-16 mx-auto animate-pulse" />
-          <p>รอ Admin เริ่ม SAFE ACT</p>
+        <div className="glass-card p-8 text-center space-y-4">
+          {isLoading ? (
+            <>
+              <Loader2 className="w-16 h-16 mx-auto animate-spin text-primary" />
+              <p>กําลังเริ่มเกม...</p>
+            </>
+          ) : (
+            <>
+              <Shield className="w-16 h-16 mx-auto animate-pulse" />
+              <p>รอ Admin เริ่ม SAFE ACT</p>
+            </>
+          )}
         </div>
       );
     }

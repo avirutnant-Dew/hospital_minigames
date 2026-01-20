@@ -193,9 +193,18 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
   if (!isMainStage) {
     if (!activeGame) {
       return (
-        <div className="glass-card p-6 text-center">
-          <Heart className="mx-auto w-12 h-12 text-pink-400" />
-          <p>รอ Admin เริ่ม PRO CARE</p>
+        <div className="glass-card p-6 text-center space-y-4">
+          {isLoading ? (
+            <>
+              <Loader2 className="mx-auto w-12 h-12 text-pink-400 animate-spin" />
+              <p>กําลังเริ่มเกม...</p>
+            </>
+          ) : (
+            <>
+              <Heart className="mx-auto w-12 h-12 text-pink-400" />
+              <p>รอ Admin เริ่ม PRO CARE</p>
+            </>
+          )}
         </div>
       );
     }

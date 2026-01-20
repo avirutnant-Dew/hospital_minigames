@@ -217,11 +217,16 @@ export function GrowPlusController({
 
   // Auto-start game if forcedGameType is provided (Test Mode)
   useEffect(() => {
-    if (forcedGameType && !activeGame && !loading) {
-      console.log('Test Mode: Auto-starting game:', forcedGameType);
+    if (!forcedGameType || loading) return;
+
+    // Start if no game active OR if the active game is the wrong type
+    const needsStart = !activeGame || activeGame.game_type !== forcedGameType;
+
+    if (needsStart) {
+      console.log(`Test Mode: ${activeGame ? 'Switching' : 'Starting'} game to:`, forcedGameType);
       startGame(forcedGameType);
     }
-  }, [forcedGameType, activeGame, loading, startGame]);
+  }, [forcedGameType, activeGame?.game_type, loading, startGame]);
 
   /* ---------- END GAME ---------- */
   const endGame = useCallback(async () => {
@@ -362,15 +367,24 @@ export function GrowPlusController({
   // ======================
   if (!activeGame) {
     return (
-      <div className="glass-card p-6 text-center">
-        <Sparkles className="mx-auto w-12 h-12 text-strategy-grow" />
-        <p>รอ Admin เริ่ม GROW+</p>
+      <div className="glass-card p-6 text-center space-y-4">
+        {loading ? (
+          <>
+            <Loader2 className="mx-auto w-12 h-12 text-strategy-grow animate-spin" />
+            <p>กําลังเริ่มเกม...</p>
+          </>
+        ) : (
+          <>
+            <Sparkles className="mx-auto w-12 h-12 text-strategy-grow" />
+            <p>รอ Admin เริ่ม GROW+</p>
+          </>
+        )}
       </div>
     );
   }
 
   return (
-    <>
+    <div className="w-full">
       {activeGame.game_type === "REVENUE_TAP" && (
         <RevenueTapGame
           onTap={handleTap}
@@ -383,34 +397,38 @@ export function GrowPlusController({
         />
       )}
       {activeGame.game_type === "HOSPITAL_NETWORK" && (
-        <HospitalNetworkChain
-          gameId={activeGame.id}
-          teamId={teamId || null}
-          playerNickname={playerNickname || 'Unknown'}
-          onScore={(score) => {
-            setTotalScore((prev) => prev + score);
-            if (enableBatchUpdates && playerNickname) {
-              addAction('SEQUENCE_COMPLETE', score);
-            }
-          }}
-          durationSeconds={timeRemaining}
-          playerCount={playerCount}
-        />
+        <div className="w-full h-[600px]">
+          <HospitalNetworkChain
+            gameId={activeGame.id}
+            teamId={teamId || null}
+            playerNickname={playerNickname || 'Unknown'}
+            onScore={(score, playerName) => {
+              setTotalScore((prev) => prev + score);
+              if (enableBatchUpdates && playerNickname) {
+                addAction('SEQUENCE_COMPLETE', score);
+              }
+            }}
+            durationSeconds={timeRemaining}
+            playerCount={playerCount}
+          />
+        </div>
       )}
       {activeGame.game_type === "DEPARTMENT_EFFICIENCY" && (
-        <DepartmentEfficiencyChain
-          gameId={activeGame.id}
-          teamId={teamId || null}
-          playerNickname={playerNickname || 'Unknown'}
-          onScore={(score) => {
-            setTotalScore((prev) => prev + score);
-            if (enableBatchUpdates && playerNickname) {
-              addAction('PATHWAY_COMPLETE', score);
-            }
-          }}
-          durationSeconds={timeRemaining}
-          playerCount={playerCount}
-        />
+        <div className="w-full h-[600px]">
+          <DepartmentEfficiencyChain
+            gameId={activeGame.id}
+            teamId={teamId || null}
+            playerNickname={playerNickname || 'Unknown'}
+            onScore={(score, playerName) => {
+              setTotalScore((prev) => prev + score);
+              if (enableBatchUpdates && playerNickname) {
+                addAction('PATHWAY_COMPLETE', score);
+              }
+            }}
+            durationSeconds={timeRemaining}
+            playerCount={playerCount}
+          />
+        </div>
       )}
 
       <GameSummaryModal
@@ -419,6 +437,6 @@ export function GrowPlusController({
         totalRevenue={totalScore}
         gameType={activeGame.game_type}
       />
-    </>
+    </div>
   );
 }
