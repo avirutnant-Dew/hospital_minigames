@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SafeActGame, SafeActGameType, SAFE_ACT_CONFIG, selectRandomSafeActGame, Hazard } from "./types";
 
@@ -42,6 +42,7 @@ export function SafeActController({
 
   const [isLoading, setIsLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const isStarting = useRef(false);
 
   // Critical Sync specific state
   const [ekgValue, setEkgValue] = useState(50);
@@ -89,6 +90,64 @@ export function SafeActController({
     };
   }, [activeGame?.id, teamId, onGameEnd]);
 
+  /* ================= END GAME ================= */
+
+  const endGame = useCallback(async () => {
+    if (!activeGame) return;
+
+    let safetyScore = 0;
+
+    if (activeGame.game_type === "RISK_DEFENDER") {
+      safetyScore =
+        totalCorrect * SAFE_ACT_CONFIG.RISK_DEFENDER.correctScore -
+        totalWrong * SAFE_ACT_CONFIG.RISK_DEFENDER.wrongPenalty;
+    }
+
+    if (activeGame.game_type === "HAZARD_POPPER") {
+      safetyScore = hazardsCleared * SAFE_ACT_CONFIG.HAZARD_POPPER.scorePerHazard;
+    }
+
+    await supabase
+      .from("safe_act_games")
+      .update({
+        is_active: false,
+        shield_health: shieldHealth,
+        total_correct: totalCorrect,
+        total_wrong: totalWrong,
+        hazards_cleared: hazardsCleared,
+        safety_score: Math.max(0, safetyScore),
+      })
+      .eq("id", activeGame.id);
+
+    if (teamId && safetyScore > 0) {
+      const { data } = await supabase.from("teams").select("safety_score").eq("id", teamId).single();
+
+      await supabase
+        .from("teams")
+        .update({
+          safety_score: (data?.safety_score || 0) + safetyScore,
+        })
+        .eq("id", teamId);
+    }
+
+    onGameEnd?.(safetyScore);
+  }, [activeGame, shieldHealth, totalCorrect, totalWrong, hazardsCleared, teamId, onGameEnd]);
+
+  const handleCriticalSyncTap = useCallback(() => {
+    if (!activeGame || activeGame.game_type !== "CRITICAL_SYNC") return;
+
+    setEkgValue(prev => {
+      const { safeZoneMin, safeZoneMax } = SAFE_ACT_CONFIG.CRITICAL_SYNC;
+      const center = (safeZoneMin + safeZoneMax) / 2;
+
+      // Pull towards center
+      const pull = (center - prev) * 0.2;
+      return Math.max(0, Math.min(100, prev + pull + (Math.random() - 0.5) * 5));
+    });
+
+    setTotalCorrect(c => c + 1);
+  }, [activeGame]);
+
   /* ================= TIMER ================= */
 
   useEffect(() => {
@@ -117,36 +176,100 @@ export function SafeActController({
     }, 1000);
 
     return () => clearInterval(t);
-  }, [activeGame]);
+  }, [activeGame, endGame, timeRemaining]);
+
+  /* ================= INITIAL FETCH ================= */
+  useEffect(() => {
+    if (initialGame) {
+      setActiveGame(initialGame);
+      setShieldHealth(initialGame.shield_health ?? 100);
+      setTotalCorrect(initialGame.total_correct ?? 0);
+      setTotalWrong(initialGame.total_wrong ?? 0);
+      setHazardsCleared(initialGame.hazards_cleared ?? 0);
+      const remain = Math.max(0, Math.floor((new Date(initialGame.ends_at).getTime() - Date.now()) / 1000));
+      setTimeRemaining(remain);
+      return;
+    }
+
+    const fetchCurrentGame = async () => {
+      setIsLoading(true);
+      try {
+        let query = supabase
+          .from("safe_act_games")
+          .select("*")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (teamId) {
+          query = query.eq("team_id", teamId);
+        } else {
+          query = query.is("team_id", null);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const game = data[0] as SafeActGame;
+          setActiveGame(game);
+          const remain = Math.max(0, Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000));
+          setTimeRemaining(remain);
+        }
+      } catch (err) {
+        console.error("Error fetching current safe act game:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCurrentGame();
+  }, [teamId, initialGame]);
 
   /* ================= START GAME ================= */
 
   const startGame = useCallback(
     async (type?: SafeActGameType) => {
+      if (isStarting.current) return;
+      isStarting.current = true;
       setIsLoading(true);
 
-      const gameType = type || selectRandomSafeActGame();
-      const duration = SAFE_ACT_CONFIG[gameType].duration;
-      const endsAt = new Date(Date.now() + duration * 1000).toISOString();
+      try {
+        const gameType = type || selectRandomSafeActGame();
+        const duration = SAFE_ACT_CONFIG[gameType].duration;
+        const endsAt = new Date(Date.now() + duration * 1000).toISOString();
 
-      await supabase.from("safe_act_games").insert({
-        team_id: teamId ?? null,
-        game_type: gameType,
-        ends_at: endsAt,
-        is_active: true,
-        shield_health: 100,
-        total_correct: 0,
-        total_wrong: 0,
-        hazards_cleared: 0,
-      });
+        const { data, error } = await supabase.from("safe_act_games").insert({
+          team_id: teamId ?? null,
+          game_type: gameType,
+          ends_at: endsAt,
+          is_active: true,
+          shield_health: 100,
+          total_correct: 0,
+          total_wrong: 0,
+          hazards_cleared: 0,
+        }).select().single();
 
-      setShieldHealth(100);
-      setTotalCorrect(0);
-      setTotalWrong(0);
-      setHazardsCleared(0);
-      setHazards([]);
+        if (error) {
+          console.error("Failed to start game:", error);
+          return;
+        }
 
-      setIsLoading(false);
+        const game = data as SafeActGame;
+        setActiveGame(game);
+        setShieldHealth(100);
+        setTotalCorrect(0);
+        setTotalWrong(0);
+        setHazardsCleared(0);
+        setHazards([]);
+        const remain = Math.max(0, Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000));
+        setTimeRemaining(remain);
+      } catch (err) {
+        console.error("Unhandled error in startGame:", err);
+      } finally {
+        setIsLoading(false);
+        isStarting.current = false;
+      }
     },
     [teamId],
   );
@@ -190,62 +313,6 @@ export function SafeActController({
 
     return () => clearInterval(interval);
   }, [activeGame?.id, isMainStage]);
-
-  const handleCriticalSyncTap = useCallback(() => {
-    if (!activeGame || activeGame.game_type !== "CRITICAL_SYNC") return;
-
-    setEkgValue(prev => {
-      const { safeZoneMin, safeZoneMax } = SAFE_ACT_CONFIG.CRITICAL_SYNC;
-      const center = (safeZoneMin + safeZoneMax) / 2;
-
-      // Pull towards center
-      const pull = (center - prev) * 0.2;
-      return Math.max(0, Math.min(100, prev + pull + (Math.random() - 0.5) * 5));
-    });
-
-    setTotalCorrect(c => c + 1);
-  }, [activeGame]);
-
-  /* ================= END GAME ================= */
-
-  const endGame = useCallback(async () => {
-    if (!activeGame) return;
-
-    let safetyScore = 0;
-
-    if (activeGame.game_type === "RISK_DEFENDER") {
-      safetyScore =
-        totalCorrect * SAFE_ACT_CONFIG.RISK_DEFENDER.correctScore -
-        totalWrong * SAFE_ACT_CONFIG.RISK_DEFENDER.wrongPenalty;
-    }
-
-    if (activeGame.game_type === "HAZARD_POPPER") {
-      safetyScore = hazardsCleared * SAFE_ACT_CONFIG.HAZARD_POPPER.scorePerHazard;
-    }
-
-    await supabase
-      .from("safe_act_games")
-      .update({
-        is_active: false,
-        shield_health: shieldHealth,
-        total_correct: totalCorrect,
-        total_wrong: totalWrong,
-        hazards_cleared: hazardsCleared,
-        safety_score: Math.max(0, safetyScore),
-      })
-      .eq("id", activeGame.id);
-
-    if (teamId && safetyScore > 0) {
-      const { data } = await supabase.from("teams").select("safety_score").eq("id", teamId).single();
-
-      await supabase
-        .from("teams")
-        .update({
-          safety_score: (data?.safety_score || 0) + safetyScore,
-        })
-        .eq("id", teamId);
-    }
-  }, [activeGame, shieldHealth, totalCorrect, totalWrong, hazardsCleared, teamId]);
 
   /* ================= PLAYER VIEW ================= */
 

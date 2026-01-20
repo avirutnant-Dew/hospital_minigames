@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ProCareGame, ProCareGameType, PRO_CARE_CONFIG, selectRandomProCareGame, EmpathyScenario, EMPATHY_SCENARIOS } from "./types";
 import { HeartCollectorMainDisplay, HeartCollectorGame } from "./HeartCollectorGame";
@@ -21,6 +21,7 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const isStarting = useRef(false);
 
   // stats
   const [csiScore, setCsiScore] = useState(70);
@@ -76,39 +77,115 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
   }, [activeGame]);
 
   // ======================
+  // INITIAL FETCH
+  // ======================
+  useEffect(() => {
+    const fetchCurrentGame = async () => {
+      setIsLoading(true);
+      try {
+        let query = supabase
+          .from("pro_care_games")
+          .select("*")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (teamId) {
+          query = query.eq("team_id", teamId);
+        } else {
+          query = query.is("team_id", null);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const game = data[0] as unknown as ProCareGame;
+          setActiveGame(game);
+          const remain = Math.max(0, Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000));
+          setTimeRemaining(remain);
+        }
+      } catch (err) {
+        console.error("Error fetching current pro care game:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCurrentGame();
+  }, [teamId]);
+
+  // ======================
+  // REALTIME
+  // ======================
+  useEffect(() => {
+    const channel = supabase
+      .channel("pro-care-main")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pro_care_games" }, (payload) => {
+        const game = payload.new as ProCareGame;
+        if (!game) return;
+        if (teamId && game.team_id !== teamId) return;
+
+        if (game.is_active) {
+          setActiveGame(game);
+          const remain = Math.max(0, Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000));
+          setTimeRemaining(remain);
+        } else if (activeGame?.id === game.id) {
+          setActiveGame(null);
+          setShowSummary(true);
+          onGameEnd?.(0); // Score calculation happens in endGame, this just triggers UI
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeGame?.id, teamId, onGameEnd]);
+
+  // ======================
   // START GAME
   // ======================
   const startGame = async (type?: ProCareGameType) => {
+    if (isStarting.current) return;
+    isStarting.current = true;
     setIsLoading(true);
-    const gameType = type || selectRandomProCareGame();
-    const duration = PRO_CARE_CONFIG[gameType].duration;
 
-    const { data, error } = await supabase
-      .from("pro_care_games")
-      .insert({
-        game_type: gameType,
-        team_id: teamId,
-        ends_at: new Date(Date.now() + duration * 1000).toISOString(),
-        is_active: true,
-      })
-      .select()
-      .single();
+    try {
+      const gameType = type || selectRandomProCareGame();
+      const duration = PRO_CARE_CONFIG[gameType].duration;
 
-    setIsLoading(false);
-    if (error) {
-      console.error(error);
-      return;
+      const { data, error } = await supabase
+        .from("pro_care_games")
+        .insert({
+          game_type: gameType,
+          team_id: teamId || null,
+          ends_at: new Date(Date.now() + duration * 1000).toISOString(),
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Failed to start game:", error);
+        return;
+      }
+
+      const game = data as unknown as ProCareGame;
+      setActiveGame(game);
+      setTimeRemaining(duration);
+      setHearts(0);
+      setCorrectVotes(0);
+      setTotalVotes(0);
+      setSmileTaps(0);
+      setCustomersHelped(0);
+      setCsiScore(70);
+    } catch (err) {
+      console.error("Unhandled error in startGame:", err);
+    } finally {
+      setIsLoading(false);
+      isStarting.current = false;
     }
-
-    const game = data as unknown as ProCareGame;
-    setActiveGame(game);
-    setTimeRemaining(duration);
-    setHearts(0);
-    setCorrectVotes(0);
-    setTotalVotes(0);
-    setSmileTaps(0);
-    setCustomersHelped(0);
-    setCsiScore(70);
   };
 
   // ======================

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
@@ -40,6 +40,7 @@ export function GrowPlusController({
   const [gameActive, setGameActive] = useState(false);
   const [recentScores, setRecentScores] = useState<GrowPlusScore[]>([]);
   const [playerCount, setPlayerCount] = useState(0);
+  const isStarting = useRef(false);
 
   // Batch action buffer for multi-player support
   const { addAction, forceFlush } = useBatchActionBuffer({
@@ -52,24 +53,51 @@ export function GrowPlusController({
     enabled: enableBatchUpdates && !!playerNickname,
   });
 
-  /* ---------- INIT FROM MAIN STAGE ---------- */
+  /* ---------- INITIAL FETCH ---------- */
   useEffect(() => {
-    if (!initialGame) return;
+    if (initialGame) return;
 
-    setActiveGame(initialGame);
-    setTotalScore(initialGame.total_score || 0);
+    const fetchCurrentGame = async () => {
+      setLoading(true);
+      try {
+        let query = supabase
+          .from("grow_plus_games")
+          .select("*")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-    const remain = Math.floor((new Date(initialGame.ends_at).getTime() - Date.now()) / 1000) || 0;
+        if (teamId) {
+          query = query.eq("team_id", teamId);
+        } else {
+          query = query.is("team_id", null);
+        }
 
-    setTimeRemaining(Math.max(0, remain));
-  }, [initialGame?.id]);
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const game = data[0] as GrowPlusGame;
+          setActiveGame(game);
+          const remain = Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000);
+          setTimeRemaining(Math.max(0, remain));
+        }
+      } catch (err) {
+        console.error("Error fetching current game:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCurrentGame();
+  }, [teamId, initialGame]);
 
   /* ---------- SET GAME ACTIVE ON LOAD ---------- */
   useEffect(() => {
     if (activeGame && activeGame.is_active) {
       setGameActive(true);
     }
-  }, [activeGame?.id]);
+  }, [activeGame?.id, activeGame?.is_active]);
 
   /* ---------- REALTIME GAME STATE ---------- */
   useEffect(() => {
@@ -180,12 +208,15 @@ export function GrowPlusController({
   /* ---------- START GAME ---------- */
   const startGame = useCallback(
     async (type?: GrowPlusGameType) => {
+      if (isStarting.current) return;
+      isStarting.current = true;
       setLoading(true);
-      const gameType = type || selectRandomGame();
-      const duration = GAME_CONFIG[gameType].duration;
-      const endsAt = new Date(Date.now() + duration * 1000).toISOString();
 
       try {
+        const gameType = type || selectRandomGame();
+        const duration = GAME_CONFIG[gameType].duration;
+        const endsAt = new Date(Date.now() + duration * 1000).toISOString();
+
         const { data, error } = await supabase.from("grow_plus_games").insert({
           team_id: teamId || null,
           game_type: gameType,
@@ -197,7 +228,6 @@ export function GrowPlusController({
 
         if (error) {
           console.error('Failed to create game:', error);
-          setLoading(false);
           return;
         }
 
@@ -207,10 +237,11 @@ export function GrowPlusController({
         setTimeRemaining(duration);
         setGameActive(true);
       } catch (err) {
-        console.error('Failed to create game:', err);
+        console.error('Unhandled error in startGame:', err);
+      } finally {
+        setLoading(false);
+        isStarting.current = false;
       }
-
-      setLoading(false);
     },
     [teamId],
   );
