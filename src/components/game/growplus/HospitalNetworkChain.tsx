@@ -31,6 +31,8 @@ export function HospitalNetworkChain({
   const [feedback, setFeedback] = useState<string>('');
   const [leaderboard, setLeaderboard] = useState<Array<{ player: string; sequences: number }>>([]);
 
+  const [shuffledIndices, setShuffledIndices] = useState<number[]>([]);
+
   // Sync timeLeft with durationSeconds from controller
   useEffect(() => {
     if (durationSeconds > 0) {
@@ -45,11 +47,31 @@ export function HospitalNetworkChain({
     return () => clearInterval(timer);
   }, [timeLeft]);
 
-  // Initialize with random pathway
+  // Initialize with random pathway AND shuffle tiles
   useEffect(() => {
     const randomPathway = PATIENT_PATHWAYS[Math.floor(Math.random() * PATIENT_PATHWAYS.length)];
     setCurrentPathway(randomPathway);
-  }, []);
+
+    // Create and shuffle indices
+    const indices = Array.from({ length: randomPathway.departments.length }, (_, i) => i);
+    // Fisher-Yates shuffle
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    setShuffledIndices(indices);
+  }, []); // Run once on mount
+
+  // Reshuffle when pathway changes (e.g. after completion)
+  useEffect(() => {
+    if (!currentPathway) return;
+    const indices = Array.from({ length: currentPathway.departments.length }, (_, i) => i);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    setShuffledIndices(indices);
+  }, [currentPathway]);
 
   // Simulate leaderboard updates every 2 seconds
   useEffect(() => {
@@ -80,7 +102,7 @@ export function HospitalNetworkChain({
       setLastTappedDept(currentPathway.departments[deptIndex].id);
       setFeedback(`✓ ${currentPathway.departments[deptIndex].name}`);
 
-      if (newProgress.length === sequenceLength) {
+      if (newProgress.length === currentPathway.departments.length) {
         // Sequence completed!
         const reward = scorePerSequence;
         setTotalScore((prev) => prev + reward);
@@ -101,6 +123,14 @@ export function HospitalNetworkChain({
           if (Math.random() > 0.5) {
             const newPathway = PATIENT_PATHWAYS[Math.floor(Math.random() * PATIENT_PATHWAYS.length)];
             setCurrentPathway(newPathway);
+          } else {
+            // Just reshuffle the current one for variety if we don't switch
+            const indices = [...shuffledIndices];
+            for (let i = indices.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [indices[i], indices[j]] = [indices[j], indices[i]];
+            }
+            setShuffledIndices(indices);
           }
         }, 800);
       } else {
@@ -151,36 +181,30 @@ export function HospitalNetworkChain({
         <div className="text-xs text-purple-300 text-opacity-70">{currentPathway.description}</div>
       </div>
 
-      {/* Main Pathway Chain */}
-      <div className="flex-1 flex items-center justify-center gap-2 py-6 min-h-[200px]">
-        {currentPathway.departments.map((dept, idx) => (
-          <div key={dept.id} className="flex items-center">
-            <button
-              onClick={() => onDepartmentTap(idx)}
-              disabled={timeLeft <= 0}
-              className={cn(
-                'w-16 h-16 rounded-lg flex flex-col items-center justify-center gap-1 transition-all transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed',
-                sequenceProgress.includes(idx)
-                  ? 'bg-emerald-500/40 border-2 border-emerald-400 scale-105 shadow-lg shadow-emerald-500/50'
-                  : idx === sequenceProgress.length
-                  ? 'bg-cyan-500/30 border-2 border-cyan-400 hover:scale-115 shadow-lg shadow-cyan-500/30 animate-pulse'
-                  : 'bg-gray-700/40 border-2 border-gray-600',
-                lastTappedDept === dept.id && 'animate-bounce'
-              )}>
-              <span className="text-2xl">{dept.icon}</span>
-              <span className="text-xs font-kanit text-white text-center leading-tight">{dept.name}</span>
-            </button>
+      {/* Main Pathway Chain (SBU Grid) */}
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 py-4 place-items-center">
+        {shuffledIndices.map((logicalIdx) => {
+          const dept = currentPathway.departments[logicalIdx];
+          const isNext = logicalIdx === sequenceProgress.length;
 
-            {idx < currentPathway.departments.length - 1 && (
-              <div className={cn(
-                'w-8 h-1 mx-1 rounded transition-all',
-                sequenceProgress.includes(idx) && sequenceProgress.includes(idx + 1)
-                  ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50'
-                  : 'bg-gray-600'
-              )} />
-            )}
-          </div>
-        ))}
+          return (
+            <div key={dept.id} className="flex items-center justify-center">
+              <button
+                onClick={() => onDepartmentTap(logicalIdx)}
+                disabled={timeLeft <= 0}
+                className={cn(
+                  'w-20 h-20 rounded-lg flex flex-col items-center justify-center gap-1 transition-all transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed',
+                  sequenceProgress.includes(logicalIdx)
+                    ? 'bg-emerald-500/40 border-2 border-emerald-400 scale-105 shadow-lg shadow-emerald-500/50'
+                    : 'bg-gray-700/40 border-2 border-gray-600 hover:border-cyan-400/50', // Removed explicit "next" hint to increase difficulty
+                  lastTappedDept === dept.id && 'animate-bounce'
+                )}>
+                <span className="text-3xl">{dept.icon}</span>
+                <span className="text-xs font-kanit text-white text-center leading-tight">{dept.name}</span>
+              </button>
+            </div>
+          )
+        })}
       </div>
 
       {/* Feedback & Status */}

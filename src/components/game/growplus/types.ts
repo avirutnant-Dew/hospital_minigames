@@ -125,7 +125,7 @@ export const GAME_CONFIG = {
   },
   HOSPITAL_NETWORK: {
     duration: 45, // seconds
-    sequenceLength: 3, // departments to tap in sequence
+    sequenceLength: 6, // departments to tap in sequence
     scorePerSequence: 2000000, // 2M THB
   },
   DEPARTMENT_EFFICIENCY: {
