@@ -22,122 +22,117 @@ export interface Mission {
   suggestedGameType?: string;
 }
 
-// Mission pool based on hospital 2026 targets
+// Mission pool now directly maps to Mini-Games
 export const MISSION_POOL: Mission[] = [
-  // GROW_PLUS Missions
+  // ======================
+  // GROW_PLUS GAMES
+  // ======================
   {
-    id: "grow_1",
+    id: "gp_revenue",
     category: "GROW_PLUS",
-    title: "Heart Center Growth",
-    description: "เพิ่มยอดผู้ป่วยศูนย์หัวใจ เป้าหมายปี 2026 เติบโต 25%",
-    targetMetric: "เพิ่มยอดรายได้ 25%",
+    title: "Revenue Tap",
+    description: "Tap rapidly to generate revenue for the hospital!",
+    targetMetric: "Max Score",
     points: 50,
+    suggestedGameType: "REVENUE_TAP"
   },
   {
-    id: "grow_2",
+    id: "gp_sbu",
     category: "GROW_PLUS",
-    title: "MRI & CT Utilization",
-    description: "เพิ่มประสิทธิภาพการใช้เครื่อง MRI และ CT Scan ให้ได้ 85% Utilization",
-    targetMetric: "Utilization 85%",
-    points: 40,
+    title: "SBU Combo",
+    description: "Match the rotating SBU zones to boost synergy!",
+    targetMetric: "High Combo",
+    points: 50,
+    suggestedGameType: "SBU_COMBO"
   },
   {
-    id: "grow_3",
+    id: "gp_referral",
     category: "GROW_PLUS",
-    title: "Corporate Health Checkup",
-    description: "ขยายฐานลูกค้าองค์กรตรวจสุขภาพประจำปี เพิ่มขึ้น 30%",
-    targetMetric: "เพิ่มลูกค้า 30%",
+    title: "Referral Link",
+    description: "Connect patient referrals to the right centers.",
+    targetMetric: "Fast Links",
     points: 45,
+    suggestedGameType: "REFERRAL_LINK"
   },
   {
-    id: "grow_4",
+    id: "gp_network",
     category: "GROW_PLUS",
-    title: "Orthopedic Excellence",
-    description: "ยกระดับศูนย์กระดูกและข้อ ผ่าตัดเปลี่ยนข้อเข่า 500 ราย/ปี",
-    targetMetric: "500 cases/year",
+    title: "Hospital Network",
+    description: "Build a strong network across the region.",
+    targetMetric: "Network Size",
     points: 55,
+    suggestedGameType: "HOSPITAL_NETWORK"
   },
   {
-    id: "grow_5",
+    id: "gp_dept",
     category: "GROW_PLUS",
-    title: "Revenue Cycle Management",
-    description: "บริหารจัดการรายได้และการเงินให้มีประสิทธิภาพสูงสุด",
-    targetMetric: "Cash Flow +20%",
-    points: 50,
-  },
-  {
-    id: "grow_6",
-    category: "GROW_PLUS",
-    title: "Patient Referral System",
-    description: "พัฒนาระบบส่งต่อผู้ป่วยให้รวดเร็วและไร้รอยต่อ",
-    targetMetric: "Referrals +15%",
-    points: 45,
-  },
-  // SAFE_ACT Missions
-  {
-    id: "safe_1",
-    category: "SAFE_ACT",
-    title: "Zero Medication Error",
-    description: "ลดข้อผิดพลาดจากการให้ยาเป็นศูนย์ ผ่านระบบ Double Check",
-    targetMetric: "0 Error Rate",
+    title: "Department Efficiency",
+    description: "Manage patient flow through departments efficiently.",
+    targetMetric: "Flow Rate",
     points: 60,
+    suggestedGameType: "DEPARTMENT_EFFICIENCY"
   },
+
+  // ======================
+  // SAFE_ACT GAMES
+  // ======================
   {
-    id: "safe_2",
+    id: "sa_hazard",
     category: "SAFE_ACT",
-    title: "Fall Prevention Program",
-    description: "ป้องกันผู้ป่วยพลัดตกหกล้ม ลดลง 50% จากปีก่อน",
-    targetMetric: "ลด 50%",
-    points: 45,
-  },
-  {
-    id: "safe_3",
-    category: "SAFE_ACT",
-    title: "Hand Hygiene Compliance",
-    description: "ยกระดับการล้างมือ WHO 5 Moments เป็น 95%",
-    targetMetric: "95% Compliance",
-    points: 40,
-  },
-  {
-    id: "safe_4",
-    category: "SAFE_ACT",
-    title: "Fire Safety Drill",
-    description: "ซ้อมหนีไฟทุกหน่วยงาน 100% ภายใน Q2",
-    targetMetric: "100% Coverage",
-    points: 35,
-  },
-  // PRO_CARE Missions
-  {
-    id: "care_1",
-    category: "PRO_CARE",
-    title: "Patient Satisfaction Score",
-    description: "ยกระดับความพึงพอใจผู้ป่วย NPS Score เป็น 85+",
-    targetMetric: "NPS 85+",
+    title: "Hazard Popper",
+    description: "Identify and eliminate safety hazards in the hospital.",
+    targetMetric: "Zero Hazards",
     points: 50,
+    suggestedGameType: "HAZARD_POPPER"
   },
   {
-    id: "care_2",
+    id: "sa_risk",
+    category: "SAFE_ACT",
+    title: "Risk Defender",
+    description: "Swipe to identify risks vs safe behaviors.",
+    targetMetric: "High Accuracy",
+    points: 50,
+    suggestedGameType: "RISK_DEFENDER"
+  },
+  {
+    id: "sa_critical",
+    category: "SAFE_ACT",
+    title: "Critical Sync",
+    description: "Sync the team to keep patient vitals stable.",
+    targetMetric: "Stable Vitals",
+    points: 60,
+    suggestedGameType: "CRITICAL_SYNC"
+  },
+
+  // ======================
+  // PRO_CARE GAMES
+  // ======================
+  {
+    id: "pc_heart",
     category: "PRO_CARE",
-    title: "Waiting Time Reduction",
-    description: "ลดเวลารอพบแพทย์เฉลี่ยเหลือไม่เกิน 15 นาที",
-    targetMetric: "≤15 minutes",
+    title: "Heart Collector",
+    description: "Collect hearts to improve patient satisfaction.",
+    targetMetric: "Max Hearts",
+    points: 50,
+    suggestedGameType: "HEART_COLLECTOR"
+  },
+  {
+    id: "pc_empathy",
+    category: "PRO_CARE",
+    title: "Empathy Echo",
+    description: "Choose the most empathetic response for patients.",
+    targetMetric: "Empathy Score",
+    points: 50,
+    suggestedGameType: "EMPATHY_ECHO"
+  },
+  {
+    id: "pc_smile",
+    category: "PRO_CARE",
+    title: "Smile Sparkle",
+    description: "Make patients smile with excellent service.",
+    targetMetric: "Happy Patients",
     points: 45,
-  },
-  {
-    id: "care_3",
-    category: "PRO_CARE",
-    title: "Discharge Process Improvement",
-    description: "ลดเวลา Discharge เหลือไม่เกิน 30 นาที",
-    targetMetric: "≤30 minutes",
-    points: 40,
-  },
-  {
-    id: "care_4",
-    category: "PRO_CARE",
-    title: "Empathy Excellence",
-    description: "อบรม Service Mind ให้พนักงาน 100% ภายใน Q1",
-    targetMetric: "100% Trained",
-    points: 35,
+    suggestedGameType: "SMILE_SPARKLE"
   },
 ];
 
