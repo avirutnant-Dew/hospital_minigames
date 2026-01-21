@@ -16,8 +16,8 @@ interface Props {
   forcedGameType?: ProCareGameType;
 }
 
-export function ProCareController({ teamId, playerNickname, isMainStage = false, onGameEnd, forcedGameType }: Props) {
-  const [activeGame, setActiveGame] = useState<ProCareGame | null>(null);
+export function ProCareController({ teamId, playerNickname, isMainStage = false, onGameEnd, forcedGameType, initialGame }: Props & { initialGame?: ProCareGame | null }) {
+  const [activeGame, setActiveGame] = useState<ProCareGame | null>(initialGame || null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
@@ -33,53 +33,72 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
   const [currentScenario, setCurrentScenario] = useState<EmpathyScenario | null>(null);
 
   // ======================
+  // SYNC INITIAL GAME
+  // ======================
+  useEffect(() => {
+    if (initialGame) {
+      setActiveGame(initialGame);
+      setTimeRemaining(Math.max(0, Math.floor((new Date(initialGame.ends_at).getTime() - Date.now()) / 1000)));
+    }
+  }, [initialGame]);
+
+  // ======================
+  // SCENARIO MANAGEMENT
+  // ======================
+  // ======================
   // SCENARIO MANAGEMENT
   // ======================
   useEffect(() => {
     if (activeGame?.game_type === 'EMPATHY_ECHO') {
       // Pick a random scenario if none active
+      // Logic: If we switched games (new ID) OR if we don't have a scenario yet
       if (!currentScenario) {
         const random = EMPATHY_SCENARIOS[Math.floor(Math.random() * EMPATHY_SCENARIOS.length)];
         setCurrentScenario(random);
       }
+    } else {
+      // Reset if not playing Empathy Echo
+      if (currentScenario) setCurrentScenario(null);
     }
-  }, [activeGame?.id, currentScenario]);
+  }, [activeGame?.id, activeGame?.game_type]);
 
   // ======================
   // TIMER
   // ======================
+  // ======================
+  // TIMER
+  // ======================
   useEffect(() => {
-    if (!activeGame) return;
+    if (!activeGame?.ends_at) return;
 
-    // Initialize timeRemaining if not already set
-    if (timeRemaining === 0) {
-      const remain = Math.max(0, Math.floor((new Date(activeGame.ends_at).getTime() - Date.now()) / 1000));
-      setTimeRemaining(remain);
-      return;
-    }
+    // Initialize/Update timeRemaining logic
+    const calculateTimeRemaining = () => {
+      const remain = Math.floor((new Date(activeGame.ends_at).getTime() - Date.now()) / 1000);
+      return Math.max(0, remain);
+    };
 
-    if (timeRemaining <= 0) {
-      endGame();
-      return;
-    }
+    // Set initial time if we switched games
+    setTimeRemaining(calculateTimeRemaining());
 
     const timer = setInterval(() => {
-      setTimeRemaining((t) => {
-        if (t <= 1) {
-          endGame();
-          return 0;
-        }
-        return t - 1;
-      });
+      const remain = calculateTimeRemaining();
+      setTimeRemaining(remain);
+
+      if (remain <= 0) {
+        clearInterval(timer);
+        endGame();
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [activeGame]);
+  }, [activeGame?.id, activeGame?.ends_at]);
 
   // ======================
   // INITIAL FETCH
   // ======================
   useEffect(() => {
+    if (initialGame) return;
+
     const fetchCurrentGame = async () => {
       setIsLoading(true);
       try {

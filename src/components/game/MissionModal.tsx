@@ -19,6 +19,7 @@ export interface Mission {
   description: string;
   targetMetric: string;
   points: number;
+  suggestedGameType?: string;
 }
 
 // Mission pool based on hospital 2026 targets
@@ -55,6 +56,22 @@ export const MISSION_POOL: Mission[] = [
     description: "ยกระดับศูนย์กระดูกและข้อ ผ่าตัดเปลี่ยนข้อเข่า 500 ราย/ปี",
     targetMetric: "500 cases/year",
     points: 55,
+  },
+  {
+    id: "grow_5",
+    category: "GROW_PLUS",
+    title: "Revenue Cycle Management",
+    description: "บริหารจัดการรายได้และการเงินให้มีประสิทธิภาพสูงสุด",
+    targetMetric: "Cash Flow +20%",
+    points: 50,
+  },
+  {
+    id: "grow_6",
+    category: "GROW_PLUS",
+    title: "Patient Referral System",
+    description: "พัฒนาระบบส่งต่อผู้ป่วยให้รวดเร็วและไร้รอยต่อ",
+    targetMetric: "Referrals +15%",
+    points: 45,
   },
   // SAFE_ACT Missions
   {
@@ -161,22 +178,22 @@ export function MissionModal({
     if (open) {
       setIsRevealing(true);
       setSelectedMission(null);
-      
+
       // Filter mission pool based on tile type
       const categoryFilter = getMissionCategoryFromTile(tileType);
       const filteredPool = categoryFilter
         ? MISSION_POOL.filter((m) => m.category === categoryFilter)
         : MISSION_POOL;
-      
+
       const randomMission =
         filteredPool[Math.floor(Math.random() * filteredPool.length)];
-      
+
       // Delay reveal for dramatic effect
       const timer = setTimeout(() => {
         setSelectedMission(randomMission);
         setIsRevealing(false);
       }, 1500);
-      
+
       return () => clearTimeout(timer);
     }
   }, [open, tileType]);

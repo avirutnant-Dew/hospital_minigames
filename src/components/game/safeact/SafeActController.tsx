@@ -148,35 +148,31 @@ export function SafeActController({
     setTotalCorrect(c => c + 1);
   }, [activeGame]);
 
-  /* ================= TIMER ================= */
-
+  /* ---------- TIMER ---------- */
   useEffect(() => {
-    if (!activeGame) return;
+    if (!activeGame?.ends_at) return;
 
-    // Initialize timeRemaining if not already set
-    if (timeRemaining === 0) {
-      const remain = Math.max(0, Math.floor((new Date(activeGame.ends_at).getTime() - Date.now()) / 1000));
+    // Initialize/Update timeRemaining logic
+    const calculateTimeRemaining = () => {
+      const remain = Math.floor((new Date(activeGame.ends_at).getTime() - Date.now()) / 1000);
+      return Math.max(0, remain);
+    };
+
+    // Set initial time if we switched games
+    setTimeRemaining(calculateTimeRemaining());
+
+    const timer = setInterval(() => {
+      const remain = calculateTimeRemaining();
       setTimeRemaining(remain);
-      return;
-    }
 
-    if (timeRemaining <= 0) {
-      endGame();
-      return;
-    }
-
-    const t = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          endGame();
-          return 0;
-        }
-        return prev - 1;
-      });
+      if (remain <= 0) {
+        clearInterval(timer);
+        endGame();
+      }
     }, 1000);
 
-    return () => clearInterval(t);
-  }, [activeGame, endGame, timeRemaining]);
+    return () => clearInterval(timer);
+  }, [activeGame?.id, activeGame?.ends_at]);
 
   /* ================= INITIAL FETCH ================= */
   useEffect(() => {
@@ -215,6 +211,24 @@ export function SafeActController({
           setActiveGame(game);
           const remain = Math.max(0, Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000));
           setTimeRemaining(remain);
+
+          // Restore state if needed
+          setShieldHealth(game.shield_health ?? 100);
+          setTotalCorrect(game.total_correct ?? 0);
+          setTotalWrong(game.total_wrong ?? 0);
+          setHazardsCleared(game.hazards_cleared ?? 0);
+
+          // If joining an existing Hazard Popper game, ensure we have potential hazards locally
+          if (game.game_type === 'HAZARD_POPPER' && hazards.length === 0) {
+            const restoredHazards: Hazard[] = Array.from({ length: 4 }, (_, i) => ({
+              id: `h-restore-${i}`,
+              zoneId: Math.floor(Math.random() * 12),
+              tapsRequired: SAFE_ACT_CONFIG.HAZARD_POPPER.tapsPerHazard,
+              currentTaps: 0,
+              isCleared: false
+            }));
+            setHazards(restoredHazards);
+          }
         }
       } catch (err) {
         console.error("Error fetching current safe act game:", err);
@@ -261,7 +275,24 @@ export function SafeActController({
         setTotalCorrect(0);
         setTotalWrong(0);
         setHazardsCleared(0);
-        setHazards([]);
+
+        // Initialize hazards for Hazard Popper
+        if (gameType === 'HAZARD_POPPER') {
+          // Generate initial hazards
+          const initialHazards: Hazard[] = SAFE_ACT_CONFIG.HAZARD_POPPER.gridSize
+            ? Array.from({ length: 4 }, (_, i) => ({
+              id: `h-${Date.now()}-${i}`,
+              zoneId: Math.floor(Math.random() * 12), // 12 zones
+              tapsRequired: SAFE_ACT_CONFIG.HAZARD_POPPER.tapsPerHazard,
+              currentTaps: 0,
+              isCleared: false
+            }))
+            : [];
+          setHazards(initialHazards);
+        } else {
+          setHazards([]);
+        }
+
         const remain = Math.max(0, Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000));
         setTimeRemaining(remain);
       } catch (err) {

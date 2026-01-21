@@ -51,10 +51,15 @@ export default function MonitorPage() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [playerScores, setPlayerScores] = useState<PlayerScore[]>([]);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
-  
+
   // Read URL params for monitor-specific view
   const minigameType = searchParams.get("minigame");
   const minigameView = searchParams.get("view");
+
+  const [autoMinigameType, setAutoMinigameType] = useState<string | null>(null);
+
+  // Combine URL param with auto-detected game
+  const activeMinigame = autoMinigameType || minigameType;
 
   const refreshAll = useCallback(async () => {
     const [{ data: gs }, { data: t }] = await Promise.all([
@@ -62,21 +67,59 @@ export default function MonitorPage() {
       supabase.from("teams").select("*").order("revenue_score", { ascending: false }),
     ]);
 
-    if (gs) setGameState(gs as GameState);
+    if (gs) {
+      setGameState(gs as GameState);
+
+      // Auto-switch monitor logic
+      if (gs.is_challenge_active) {
+        if (gs.pending_challenge_game_type) {
+          // Case 1: Pending (Title screen or waiting)
+          setAutoMinigameType(gs.pending_challenge_game_type);
+        } else if (gs.current_turn_team_id) {
+          // Case 2: Active (Playing) - Find which game is active
+          const teamId = gs.current_turn_team_id;
+          // We need to check which game is active for this team
+          // This requires an async check, so we do it separately?
+          // Actually we can do it here inside the async refreshAll
+          const [grow, safe, pro] = await Promise.all([
+            supabase.from("grow_plus_games").select("game_type").eq("team_id", teamId).eq("is_active", true).maybeSingle(),
+            supabase.from("safe_act_games").select("game_type").eq("team_id", teamId).eq("is_active", true).maybeSingle(),
+            supabase.from("pro_care_games").select("game_type").eq("team_id", teamId).eq("is_active", true).maybeSingle(),
+          ]);
+
+          let foundType = null;
+          if (grow.data) foundType = grow.data.game_type;
+          else if (safe.data) foundType = safe.data.game_type;
+          else if (pro.data) foundType = pro.data.game_type;
+
+          if (foundType) {
+            setAutoMinigameType(foundType);
+            if (viewMode === "dashboard" || viewMode === "board") {
+              setViewMode("leaderboard");
+            }
+          }
+        }
+      } else {
+        setAutoMinigameType(null);
+      }
+    }
     if (t) setTeams(t as Team[]);
-  }, []);
+  }, [viewMode]);
 
   // Fetch leaderboard when minigame is active
   useEffect(() => {
-    if (!minigameType) return;
+    if (!activeMinigame) return;
 
     const fetchLeaderboard = async () => {
-      const tableName = `${minigameType}_scores`;
-      const { data } = await supabase.from(tableName).select('player_nickname, score_value').order('created_at', { ascending: false }).limit(100);
+      const tableName = `${activeMinigame}_scores`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await supabase.from(tableName as any).select('player_nickname, score_value').order('created_at', { ascending: false }).limit(100);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (data) {
         const aggregated: Record<string, number> = {};
-        data.forEach((row) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (data as any[]).forEach((row) => {
           aggregated[row.player_nickname] = (aggregated[row.player_nickname] || 0) + row.score_value;
         });
 
@@ -84,7 +127,8 @@ export default function MonitorPage() {
           .map(([nickname, score]) => ({
             nickname,
             score,
-            batch_count: data.filter(d => d.player_nickname === nickname).length
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            batch_count: (data as any[]).filter(d => d.player_nickname === nickname).length
           }))
           .sort((a, b) => b.score - a.score)
           .slice(0, 10);
@@ -137,6 +181,13 @@ export default function MonitorPage() {
       .channel("monitor-realtime")
       .on("postgres_changes", { event: "*", table: "game_state", schema: "public" }, () => refreshAll())
       .on("postgres_changes", { event: "*", table: "teams", schema: "public" }, () => refreshAll())
+      // Add listeners for actual game tables to prevent race conditions
+      .on("postgres_changes", { event: "INSERT", table: "grow_plus_games", schema: "public" }, () => refreshAll())
+      .on("postgres_changes", { event: "UPDATE", table: "grow_plus_games", schema: "public" }, () => refreshAll())
+      .on("postgres_changes", { event: "INSERT", table: "safe_act_games", schema: "public" }, () => refreshAll())
+      .on("postgres_changes", { event: "UPDATE", table: "safe_act_games", schema: "public" }, () => refreshAll())
+      .on("postgres_changes", { event: "INSERT", table: "pro_care_games", schema: "public" }, () => refreshAll())
+      .on("postgres_changes", { event: "UPDATE", table: "pro_care_games", schema: "public" }, () => refreshAll())
       .subscribe();
 
     return () => {
@@ -166,6 +217,10 @@ export default function MonitorPage() {
   const toMB = (baht: number) => baht / 1_000_000;
   const formatMB = (baht: number, digits = 1) => `${toMB(baht).toFixed(digits)} MB`;
 
+  // Calculate total revenue dynamically from teams to ensure real-time updates
+  const currentTotalRevenue = teams.reduce((sum, t) => sum + (t.revenue_score || 0), 0);
+  const targetRevenue = gameState?.target_revenue || 1150000000; // Default or from DB
+
   return (
     <div className="min-h-screen bg-background overflow-hidden">
       {/* Header with View Selector */}
@@ -181,27 +236,25 @@ export default function MonitorPage() {
             </div>
 
             {/* Progress Bar */}
-            {gameState && (
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground">Hospital Target</p>
-                  <p className="text-lg font-display font-bold text-accent">
-                    {formatMB(gameState.total_revenue, 1)} / {formatMB(gameState.target_revenue, 0)}
-                  </p>
-                </div>
-                <div className="w-48 h-4 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-primary to-accent transition-all"
-                    style={{
-                      width: `${Math.min(
-                        (gameState.total_revenue / gameState.target_revenue) * 100,
-                        100
-                      )}%`,
-                    }}
-                  />
-                </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Hospital Target</p>
+                <p className="text-lg font-display font-bold text-accent">
+                  {formatMB(currentTotalRevenue, 1)} / {formatMB(targetRevenue, 0)}
+                </p>
               </div>
-            )}
+              <div className="w-48 h-4 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-accent transition-all"
+                  style={{
+                    width: `${Math.min(
+                      (currentTotalRevenue / targetRevenue) * 100,
+                      100
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
           {/* View Selector Tabs */}
@@ -393,7 +446,7 @@ export default function MonitorPage() {
 
             <div className="max-w-2xl mx-auto space-y-2">
               {activityEvents.map((event, idx) => (
-                <div 
+                <div
                   key={event.id || idx}
                   className="glass-card p-4 rounded-lg border-l-4 border-accent animate-scale-in"
                 >

@@ -138,6 +138,6 @@ export const SBU_ZONES = ['Heart', 'GI', 'Ortho', 'Check-up'] as const;
 export type SBUZone = typeof SBU_ZONES[number];
 
 export const selectRandomGame = (): GrowPlusGameType => {
-  const games: GrowPlusGameType[] = ['REVENUE_TAP', 'HOSPITAL_NETWORK', 'DEPARTMENT_EFFICIENCY'];
+  const games: GrowPlusGameType[] = ['REVENUE_TAP', 'HOSPITAL_NETWORK', 'DEPARTMENT_EFFICIENCY', 'REFERRAL_LINK', 'SBU_COMBO'];
   return games[Math.floor(Math.random() * games.length)];
 };

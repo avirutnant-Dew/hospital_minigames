@@ -68,7 +68,7 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     const [teamsRes, stateRes] = await Promise.all([
       supabase.from("teams").select("*").order("name"),
-      supabase.from("game_state").select("*").limit(1).single(),
+      supabase.from("game_state").select("*").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     if (teamsRes.data) setTeams(teamsRes.data as Team[]);
@@ -166,19 +166,31 @@ export default function AdminDashboard() {
           challenge: "💡 Question Challenge",
         };
 
-        let challengeType = "";
-        if (gameType === "growplus") challengeType = "GROW_PLUS";
-        else if (gameType === "safeact") challengeType = "SAFE_ACT";
-        else if (gameType === "procare") challengeType = "PRO_CARE";
-        else if (gameType === "challenge") challengeType = "CHALLENGE";
+        let challengeType: "GROW_PLUS" | "SAFE_ACT" | "PRO_CARE" | null = null;
+        let specificGameType = gameType;
+
+        if (gameType === "growplus") {
+          challengeType = "GROW_PLUS";
+          // Pick a specific specific game instead of the generic "growplus"
+          const { selectRandomGame } = await import("@/components/game/growplus/types");
+          specificGameType = selectRandomGame();
+        } else if (gameType === "safeact") {
+          challengeType = "SAFE_ACT";
+          const { selectRandomSafeActGame } = await import("@/components/game/safeact/types");
+          specificGameType = selectRandomSafeActGame();
+        } else if (gameType === "procare") {
+          challengeType = "PRO_CARE";
+          const { selectRandomProCareGame } = await import("@/components/game/procare/types");
+          specificGameType = selectRandomProCareGame();
+        }
 
         await supabase
           .from("game_state")
           .update({
             pending_challenge_team_id: teamId,
-            pending_challenge_game_type: gameType,
+            pending_challenge_game_type: specificGameType,
             pending_challenge_title: titleMap[gameType] || "Challenge",
-            challenge_type: challengeType,
+            challenge_type: challengeType as "GROW_PLUS" | "SAFE_ACT" | "PRO_CARE" | null,
           })
           .eq("id", gameState.id);
 
@@ -219,7 +231,7 @@ export default function AdminDashboard() {
     let challengeType = gameState.challenge_type;
 
     if (!challengeType) {
-      if (["REVENUE_TAP", "SBU_COMBO", "REFERRAL_LINK"].includes(gameType)) {
+      if (["REVENUE_TAP", "SBU_COMBO", "REFERRAL_LINK", "DEPARTMENT_EFFICIENCY", "HOSPITAL_NETWORK"].includes(gameType)) {
         challengeType = "GROW_PLUS";
       } else if (["HAZARD_POPPER", "RISK_DEFENDER", "CRITICAL_SYNC"].includes(gameType)) {
         challengeType = "SAFE_ACT";
@@ -229,15 +241,16 @@ export default function AdminDashboard() {
     }
 
     // IMPORTANT: Close all old active games for this team BEFORE inserting new one
+    let insertError = null;
+
     if (challengeType === "GROW_PLUS") {
-      // Close old GROW_PLUS games for this team
       await supabase
         .from("grow_plus_games")
         .update({ is_active: false })
         .eq("team_id", teamId)
         .eq("is_active", true);
-      
-      await supabase.from("grow_plus_games").insert({
+
+      const { error } = await supabase.from("grow_plus_games").insert({
         game_type: gameType,
         team_id: teamId,
         ends_at: endsAt,
@@ -245,15 +258,16 @@ export default function AdminDashboard() {
         total_score: 0,
         combo_multiplier: 1,
       });
+      insertError = error;
+
     } else if (challengeType === "SAFE_ACT") {
-      // Close old SAFE_ACT games for this team
       await supabase
         .from("safe_act_games")
         .update({ is_active: false })
         .eq("team_id", teamId)
         .eq("is_active", true);
-      
-      await supabase.from("safe_act_games").insert({
+
+      const { error } = await supabase.from("safe_act_games").insert({
         game_type: gameType,
         team_id: teamId,
         ends_at: endsAt,
@@ -264,15 +278,16 @@ export default function AdminDashboard() {
         hazards_cleared: 0,
         combo_multiplier: 1,
       });
+      insertError = error;
+
     } else if (challengeType === "PRO_CARE") {
-      // Close old PRO_CARE games for this team
       await supabase
         .from("pro_care_games")
         .update({ is_active: false })
         .eq("team_id", teamId)
         .eq("is_active", true);
-      
-      await supabase.from("pro_care_games").insert({
+
+      const { error } = await supabase.from("pro_care_games").insert({
         game_type: gameType,
         team_id: teamId,
         ends_at: endsAt,
@@ -284,6 +299,18 @@ export default function AdminDashboard() {
         smile_taps: 0,
         customers_helped: 0,
       });
+      insertError = error;
+    }
+
+    if (insertError) {
+      console.error("Failed to start game:", insertError);
+      if (insertError.message.includes("check constraint") || insertError.code === "23514") {
+        toast.error("Database Error: Game Type Constraint Violation. Please run the migration SQL!");
+      } else {
+        toast.error(`Failed to start game: ${insertError.message}`);
+      }
+      setLoading(false);
+      return; // ABORT - Do not update game_state
     }
 
     await supabase
@@ -725,8 +752,8 @@ export default function AdminDashboard() {
             {[1, 2, 3, 4].map((monitorNum) => (
               <div key={monitorNum} className="space-y-3 p-4 border border-border/30 rounded-lg bg-muted/10">
                 <p className="font-semibold text-sm">Monitor {monitorNum}</p>
-                
-                <select 
+
+                <select
                   defaultValue="board"
                   onChange={(e) => {
                     // Store selection in session for this monitor
@@ -759,7 +786,7 @@ export default function AdminDashboard() {
               </div>
             ))}
           </div>
-          
+
           {gameState?.pending_challenge_game_type && (
             <div className="mt-4 p-3 bg-green-400/10 border border-green-400/30 rounded-lg">
               <p className="text-xs font-medium text-green-400 flex items-center gap-2">

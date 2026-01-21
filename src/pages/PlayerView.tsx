@@ -87,7 +87,7 @@ export default function PlayerView() {
   const [teamCaptains, setTeamCaptains] = useState<Record<string, boolean>>({});
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  
+
   // New states for tile type handling
   const [currentTileType, setCurrentTileType] = useState<string | null>(null);
   const [showBonusModal, setShowBonusModal] = useState(false);
@@ -104,8 +104,8 @@ export default function PlayerView() {
   const canRollDice = isMyTurn && !gameState?.is_dice_locked && isCaptain;
 
   // Generate player join URL
-  const playerJoinUrl = typeof window !== "undefined" 
-    ? `${window.location.origin}/play` 
+  const playerJoinUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/play`
     : "/play";
 
   // Helper function to shuffle an array (Fisher-Yates algorithm)
@@ -125,16 +125,16 @@ export default function PlayerView() {
     allGames: string[]
   ): string => {
     let currentBag = bag;
-    
+
     // If bag is empty, shuffle and refill
     if (currentBag.length === 0) {
       currentBag = shuffleArray(allGames);
     }
-    
+
     // Take the first game from the bag
     const [nextGame, ...remainingBag] = currentBag;
     setBag(remainingBag);
-    
+
     return nextGame;
   };
 
@@ -346,7 +346,7 @@ export default function PlayerView() {
     return () => {
       supabase.removeChannel(gamesChannel);
     };
-  }, [selectedTeam?.id, isJoined]);
+  }, [selectedTeam?.id, isJoined, gameState?.is_challenge_active]);
 
   const handleJoin = async () => {
     if (!nickname.trim() || !selectedTeam) {
@@ -414,7 +414,7 @@ export default function PlayerView() {
     toast.success("ออกจากเกมแล้ว");
   };
 
-const handleDiceRoll = async (value: number) => {
+  const handleDiceRoll = async (value: number) => {
     if (!selectedTeam) return;
 
     // Save dice value to game_state for MainStage sync
@@ -433,7 +433,7 @@ const handleDiceRoll = async (value: number) => {
     if (team) {
       let newTile = team.current_tile + value;
       let completedLap = false;
-      
+
       // Check if team reached or passed tile 23 (Goal)
       if (newTile >= 24) {
         completedLap = true;
@@ -457,7 +457,7 @@ const handleDiceRoll = async (value: number) => {
           .select("revenue_score")
           .eq("id", selectedTeam.id)
           .single();
-        
+
         if (currentTeam) {
           await supabase
             .from("teams")
@@ -481,7 +481,7 @@ const handleDiceRoll = async (value: number) => {
 
         toast.success(`ทอยได้ ${value}! เดินไปช่อง ${newTile} (${landedTile.label})`);
       }
-      
+
       // Mark that dice has been rolled - can now draw card
       setHasRolledDice(true);
     }
@@ -494,44 +494,44 @@ const handleDiceRoll = async (value: number) => {
       // Bonus Tile: Random reward 10/20/30 MB
       const bonusOptions = [10000000, 20000000, 30000000];
       const randomBonus = bonusOptions[Math.floor(Math.random() * bonusOptions.length)];
-      
+
       // Add to revenue_score
       const { data: team } = await supabase
         .from("teams")
         .select("revenue_score")
         .eq("id", selectedTeam.id)
         .single();
-      
+
       if (team) {
         await supabase
           .from("teams")
           .update({ revenue_score: team.revenue_score + randomBonus })
           .eq("id", selectedTeam.id);
       }
-      
+
       // Add news
       const bonusInMB = randomBonus / 1000000;
       await supabase.from("news_ticker").insert({
         message: `🎁 ${selectedTeam.name} ได้โบนัส ${bonusInMB}M บาท!`,
         team_id: selectedTeam.id,
       });
-      
+
       // Show bonus modal
       setBonusAmount(randomBonus);
       setShowBonusModal(true);
-      
+
       // Reset dice state after action
       setHasRolledDice(false);
-      
+
     } else if (currentTileType === "challenge") {
       // Challenge Tile: Fetch random question from database
       const { data: questions } = await supabase
         .from("challenge_questions")
         .select("*");
-      
+
       if (questions && questions.length > 0) {
         const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
-        
+
         // Parse options from JSON
         let optionsArray: string[] = [];
         if (Array.isArray(randomQuestion.options)) {
@@ -539,7 +539,7 @@ const handleDiceRoll = async (value: number) => {
         } else if (typeof randomQuestion.options === "object" && randomQuestion.options !== null) {
           optionsArray = Object.values(randomQuestion.options as Record<string, string>);
         }
-        
+
         setCurrentQuestion({
           id: randomQuestion.id,
           category: randomQuestion.category,
@@ -548,23 +548,23 @@ const handleDiceRoll = async (value: number) => {
           correct_answer: randomQuestion.correct_answer || "",
           points: randomQuestion.points,
         });
-        
+
         // Add news
         await supabase.from("news_ticker").insert({
           message: `❓ ${selectedTeam.name} ได้รับคำถาม Challenge!`,
           team_id: selectedTeam.id,
         });
-        
+
         // Reset dice state after action
         setHasRolledDice(false);
       } else {
         toast.error("ไม่พบคำถามในระบบ");
       }
-      
+
     } else {
       // grow, safe, care tiles: Open Mission Modal (filtered by tile type)
       setShowMissionModal(true);
-      
+
       // Reset dice state after action
       setHasRolledDice(false);
     }
@@ -580,26 +580,33 @@ const handleDiceRoll = async (value: number) => {
     setCurrentMission(mission);
     setShowMissionModal(false);
 
-    // Determine game type based on category using shuffle bag system
+    // Determine game type based on category
     let gameType = "";
-    if (mission.category === "GROW_PLUS") {
-      gameType = getNextGame(
-        growPlusBag,
-        setGrowPlusBag,
-        ["REVENUE_TAP", "SBU_COMBO", "REFERRAL_LINK"]
-      );
-    } else if (mission.category === "SAFE_ACT") {
-      gameType = getNextGame(
-        safeActBag,
-        setSafeActBag,
-        ["HAZARD_POPPER", "RISK_DEFENDER", "CRITICAL_SYNC"]
-      );
-    } else if (mission.category === "PRO_CARE") {
-      gameType = getNextGame(
-        proCareBag,
-        setProCareBag,
-        ["HEART_COLLECTOR", "EMPATHY_ECHO", "SMILE_SPARKLE"]
-      );
+
+    // Use suggested game type from mission if available (Fixed mapping)
+    if (mission.suggestedGameType) {
+      gameType = mission.suggestedGameType;
+    } else {
+      // Fallback to random shuffle bag system
+      if (mission.category === "GROW_PLUS") {
+        gameType = getNextGame(
+          growPlusBag,
+          setGrowPlusBag,
+          ["REVENUE_TAP", "SBU_COMBO", "REFERRAL_LINK", "HOSPITAL_NETWORK", "DEPARTMENT_EFFICIENCY"]
+        );
+      } else if (mission.category === "SAFE_ACT") {
+        gameType = getNextGame(
+          safeActBag,
+          setSafeActBag,
+          ["HAZARD_POPPER", "RISK_DEFENDER", "CRITICAL_SYNC"]
+        );
+      } else if (mission.category === "PRO_CARE") {
+        gameType = getNextGame(
+          proCareBag,
+          setProCareBag,
+          ["HEART_COLLECTOR", "EMPATHY_ECHO", "SMILE_SPARKLE"]
+        );
+      }
     }
 
     // Fetch current game_state id first
@@ -914,7 +921,7 @@ const handleDiceRoll = async (value: number) => {
             <h2 className="text-xl font-display font-bold text-center">
               🎖️ Captain Controls
             </h2>
-            
+
             {/* Dice Roller */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-center">🎲 ทอยลูกเต๋า</h3>
@@ -933,8 +940,8 @@ const handleDiceRoll = async (value: number) => {
                 disabled={!hasRolledDice}
                 className={cn(
                   "w-full h-14 text-lg font-display font-bold gap-2",
-                  hasRolledDice 
-                    ? "bg-gradient-to-r from-strategy-grow to-strategy-care" 
+                  hasRolledDice
+                    ? "bg-gradient-to-r from-strategy-grow to-strategy-care"
                     : "bg-muted text-muted-foreground cursor-not-allowed"
                 )}
               >

@@ -3,11 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Loader2 } from "lucide-react";
 
-import { GrowPlusGame, GrowPlusGameType, GrowPlusScore, GAME_CONFIG, selectRandomGame } from "./types";
+import { GrowPlusGame, GrowPlusGameType, GrowPlusScore, GAME_CONFIG, selectRandomGame, SBUZone, SBU_ZONES } from "./types";
 
 import { RevenueTapGame, RevenueTapMainDisplay } from "./RevenueTapGame";
-import { ReferralLinkMainDisplay } from "./ReferralLinkGame";
-import { SBUComboMainDisplay } from "./SBUComboGame";
+import { ReferralLinkGame, ReferralLinkMainDisplay } from "./ReferralLinkGame";
+import { SBUComboGame, SBUComboMainDisplay } from "./SBUComboGame";
 import { HospitalNetworkChain } from "./HospitalNetworkChain";
 import { DepartmentEfficiencyChain } from "./DepartmentEfficiencyChain";
 import { GameSummaryModal } from "./GameSummaryModal";
@@ -32,14 +32,15 @@ export function GrowPlusController({
   enableBatchUpdates = true,
   forcedGameType,
 }: Props) {
-  const [activeGame, setActiveGame] = useState<GrowPlusGame | null>(null);
-  const [totalScore, setTotalScore] = useState(0);
+  const [activeGame, setActiveGame] = useState<GrowPlusGame | null>(initialGame || null);
+  const [totalScore, setTotalScore] = useState(initialGame?.total_score || 0);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [gameActive, setGameActive] = useState(false);
   const [recentScores, setRecentScores] = useState<GrowPlusScore[]>([]);
   const [playerCount, setPlayerCount] = useState(0);
+  const [sbuState, setSbuState] = useState<{ current: SBUZone, target: SBUZone }>({ current: 'Heart', target: 'Heart' });
   const isStarting = useRef(false);
 
   // Batch action buffer for multi-player support
@@ -91,6 +92,17 @@ export function GrowPlusController({
 
     fetchCurrentGame();
   }, [teamId, initialGame]);
+
+  /* ---------- SYNC INITIAL GAME ---------- */
+  useEffect(() => {
+    if (initialGame) {
+      setActiveGame(initialGame);
+      setTotalScore(initialGame.total_score || 0);
+      if (initialGame.is_active) {
+        setGameActive(true);
+      }
+    }
+  }, [initialGame]);
 
   /* ---------- SET GAME ACTIVE ON LOAD ---------- */
   useEffect(() => {
@@ -178,32 +190,52 @@ export function GrowPlusController({
 
   /* ---------- TIMER ---------- */
   useEffect(() => {
-    if (!activeGame) return;
+    if (!activeGame?.ends_at) return;
 
-    // Initialize timeRemaining if not already set
-    if (timeRemaining === 0) {
-      const remain = Math.floor((new Date(activeGame.ends_at).getTime() - Date.now()) / 1000) || 0;
-      setTimeRemaining(Math.max(0, remain));
-      return;
-    }
+    // Initialize/Update timeRemaining logic
+    const calculateTimeRemaining = () => {
+      const remain = Math.floor((new Date(activeGame.ends_at).getTime() - Date.now()) / 1000);
+      return Math.max(0, remain);
+    };
 
-    if (timeRemaining <= 0) {
-      endGame();
-      return;
-    }
+    // Set initial time if we switched games
+    setTimeRemaining(calculateTimeRemaining());
 
     const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          endGame();
-          return 0;
-        }
-        return prev - 1;
-      });
+      const remain = calculateTimeRemaining();
+      setTimeRemaining(remain);
+
+      if (remain <= 0) {
+        clearInterval(timer);
+        endGame();
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [activeGame]);
+  }, [activeGame?.id, activeGame?.ends_at]);
+
+  /* ---------- SBU COMBO LOGIC ---------- */
+  useEffect(() => {
+    if (!activeGame || activeGame.game_type !== 'SBU_COMBO') return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const cycleSpeed = GAME_CONFIG.SBU_COMBO.cycleSpeed;
+
+      // Rotate current zone rapidly
+      const currentIdx = Math.floor((now / cycleSpeed) % SBU_ZONES.length);
+
+      // Rotate target zone slowly (every 4 seconds)
+      const targetIdx = Math.floor((now / 4000) % SBU_ZONES.length);
+
+      setSbuState({
+        current: SBU_ZONES[currentIdx],
+        target: SBU_ZONES[targetIdx]
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [activeGame?.game_type]);
 
   /* ---------- START GAME ---------- */
   const startGame = useCallback(
@@ -213,10 +245,31 @@ export function GrowPlusController({
       setLoading(true);
 
       try {
-        const gameType = type || selectRandomGame();
+        let gameType = type || selectRandomGame();
+
+        // Handle generic type from admin/routing
+        if ((gameType as string) === "growplus") {
+          gameType = selectRandomGame();
+        }
+
         const duration = GAME_CONFIG[gameType].duration;
         const endsAt = new Date(Date.now() + duration * 1000).toISOString();
 
+        // 1. Deactivate any existing active games for this team FIRST
+        // This prevents the UI from falling back to a stale game if the new insert fails
+        let closeQuery = supabase
+          .from("grow_plus_games")
+          .update({ is_active: false })
+          .eq("is_active", true);
+
+        if (teamId) {
+          closeQuery = closeQuery.eq("team_id", teamId);
+        } else {
+          closeQuery = closeQuery.is("team_id", null);
+        }
+        await closeQuery;
+
+        // 2. Insert the new game
         const { data, error } = await supabase.from("grow_plus_games").insert({
           team_id: teamId || null,
           game_type: gameType,
@@ -228,6 +281,12 @@ export function GrowPlusController({
 
         if (error) {
           console.error('Failed to create game:', error);
+          if (error.message.includes('check constraint')) {
+            alert("Database Error: New game types not allowed. Please run the SQL migration to update 'grow_plus_games_game_type_check' in your Supabase SQL Editor.");
+          }
+          // Clear active game so UI doesn't show the wrong one
+          setActiveGame(null);
+          setGameActive(false);
           return;
         }
 
@@ -251,7 +310,7 @@ export function GrowPlusController({
     if (!forcedGameType || loading) return;
 
     // Start if no game active OR if the active game is the wrong type
-    const needsStart = !activeGame || activeGame.game_type !== forcedGameType;
+    const needsStart = !activeGame || (activeGame.game_type !== forcedGameType && (forcedGameType as string) !== "growplus");
 
     if (needsStart) {
       console.log(`Test Mode: ${activeGame ? 'Switching' : 'Starting'} game to:`, forcedGameType);
@@ -370,16 +429,31 @@ export function GrowPlusController({
           />
         )}
         {activeGame.game_type === "REFERRAL_LINK" && (
-          <ReferralLinkMainDisplay totalScore={totalScore} timeRemaining={timeRemaining} recentLinks={[]} />
+          <ReferralLinkMainDisplay
+            totalScore={totalScore}
+            timeRemaining={timeRemaining}
+            recentLinks={recentScores
+              .filter((s) => s.action_type === "LINK_COMPLETE")
+              .map((s) => ({
+                player: s.player_nickname,
+                timestamp: new Date(s.created_at).getTime(),
+              }))}
+          />
         )}
         {activeGame.game_type === "SBU_COMBO" && (
           <SBUComboMainDisplay
             totalScore={totalScore}
             timeRemaining={timeRemaining}
-            currentZone="Heart"
-            targetZone="Heart"
-            syncCount={0}
-            comboActive={false}
+            currentZone={sbuState.current}
+            targetZone={sbuState.target}
+            syncCount={recentScores.filter(s =>
+              s.action_type === 'BOOST' &&
+              (Date.now() - new Date(s.created_at).getTime()) < 3000
+            ).length}
+            comboActive={recentScores.filter(s =>
+              s.action_type === 'BOOST' &&
+              (Date.now() - new Date(s.created_at).getTime()) < 2000
+            ).length >= 10} // Lowered threshold for testing/fun
           />
         )}
 
@@ -460,6 +534,41 @@ export function GrowPlusController({
             playerCount={playerCount}
           />
         </div>
+      )}
+      {activeGame.game_type === "REFERRAL_LINK" && (
+        <ReferralLinkGame
+          onLink={() => {
+            const score = GAME_CONFIG.REFERRAL_LINK.scorePerAction;
+            setTotalScore((prev) => prev + score);
+            if (enableBatchUpdates && playerNickname) {
+              addAction('LINK_COMPLETE', score);
+            }
+          }}
+          totalScore={totalScore}
+          timeRemaining={timeRemaining}
+          isActive={gameActive}
+        />
+      )}
+      {activeGame.game_type === "SBU_COMBO" && (
+        <SBUComboGame
+          onBoost={(zone) => {
+            if (zone !== sbuState.target) return; // Only allow boost if matching target
+
+            const score = GAME_CONFIG.SBU_COMBO.baseScore;
+            setTotalScore((prev) => prev + score);
+            if (enableBatchUpdates && playerNickname) {
+              addAction('BOOST', score);
+            }
+          }}
+          currentZone={sbuState.current}
+          targetZone={sbuState.target}
+          timeRemaining={timeRemaining}
+          isActive={gameActive}
+          lastComboSuccess={recentScores.filter(s =>
+            s.action_type === 'BOOST' &&
+            (Date.now() - new Date(s.created_at).getTime()) < 2000
+          ).length >= 10}
+        />
       )}
 
       <GameSummaryModal

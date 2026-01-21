@@ -49,19 +49,53 @@ export default function MainStage() {
   /** เด้งไปหน้า MiniGame ถ้ามี challenge_active */
   useEffect(() => {
     if (!gameState) return;
-    if (!gameState.pending_challenge_game_type) return;
-    if (!gameState.pending_challenge_team_id) return;
 
-    const type = gameState.pending_challenge_game_type;
-    const team = gameState.pending_challenge_team_id;
+    // Case 1: Pending Challenge (Wait from Player)
+    if (gameState.pending_challenge_game_type && gameState.pending_challenge_team_id) {
+      const type = gameState.pending_challenge_game_type;
+      const team = gameState.pending_challenge_team_id;
 
-    // Add a small delay to ensure game_state is fully committed to DB
-    const timer = setTimeout(() => {
-      navigate(`/minigame/${type}?team=${team}`);
-    }, 100);
+      // Map specific game types to their category routes
+      let route = "growplus";
+      if (['REVENUE_TAP', 'REFERRAL_LINK', 'SBU_COMBO', 'HOSPITAL_NETWORK', 'DEPARTMENT_EFFICIENCY'].includes(type)) {
+        route = "growplus";
+      } else if (['RISK_DEFENDER', 'CRITICAL_SYNC', 'HAZARD_POPPER'].includes(type)) {
+        route = "safeact";
+      } else if (['HEART_COLLECTOR', 'EMPATHY_ECHO', 'SMILE_SPARKLE'].includes(type)) {
+        route = "procare";
+      } else if (type === 'challenge') {
+        route = "challenge";
+      }
 
-    return () => clearTimeout(timer);
-  }, [gameState?.pending_challenge_game_type, gameState?.pending_challenge_team_id, navigate]);
+      navigate(`/minigame/${route}?team=${team}`);
+      return;
+    }
+
+    // Case 2: Active Challenge (Admin Started) - Need to find which game is active
+    if (gameState.is_challenge_active && gameState.current_turn_team_id) {
+      const checkActiveGame = async () => {
+        const teamId = gameState.current_turn_team_id;
+        // Check which game table has active game for this team
+        const [grow, safe, pro] = await Promise.all([
+          supabase.from("grow_plus_games").select("game_type").eq("team_id", teamId).eq("is_active", true).maybeSingle(),
+          supabase.from("safe_act_games").select("game_type").eq("team_id", teamId).eq("is_active", true).maybeSingle(),
+          supabase.from("pro_care_games").select("game_type").eq("team_id", teamId).eq("is_active", true).maybeSingle(),
+        ]);
+
+        let activeType = null;
+        let route = "growplus"; // default
+
+        if (grow.data) { activeType = grow.data.game_type; route = "growplus"; }
+        else if (safe.data) { activeType = safe.data.game_type; route = "safeact"; }
+        else if (pro.data) { activeType = pro.data.game_type; route = "procare"; }
+
+        if (activeType) {
+          navigate(`/minigame/${route}?team=${teamId}&game=${activeType}`);
+        }
+      };
+      checkActiveGame();
+    }
+  }, [gameState, navigate]);
 
   /** Realtime Listener */
   useEffect(() => {
