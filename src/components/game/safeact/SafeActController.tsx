@@ -240,6 +240,24 @@ export function SafeActController({
     fetchCurrentGame();
   }, [teamId, initialGame]);
 
+  // ======================
+  // GUARANTEE HAZARD INIT
+  // ======================
+  // Fix for "Red Zones" not appearing if joining late or via realtime
+  useEffect(() => {
+    if (activeGame?.game_type === 'HAZARD_POPPER' && hazards.length === 0) {
+      console.log("Initializing missing hazards for Hazard Popper");
+      const initialHazards: Hazard[] = Array.from({ length: 4 }, (_, i) => ({
+        id: `h-init-${Date.now()}-${i}`,
+        zoneId: Math.floor(Math.random() * 12),
+        tapsRequired: SAFE_ACT_CONFIG.HAZARD_POPPER.tapsPerHazard,
+        currentTaps: 0,
+        isCleared: false
+      }));
+      setHazards(initialHazards);
+    }
+  }, [activeGame?.game_type, activeGame?.id]);
+
   /* ================= START GAME ================= */
 
   const startGame = useCallback(
