@@ -137,6 +137,30 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
   // ======================
   // REALTIME
   // ======================
+  // ======================
+  // DERIVED STATE
+  // ======================
+  useEffect(() => {
+    let newCsi = 70; // Base score
+
+    if (activeGame?.game_type === "HEART_COLLECTOR") {
+      newCsi += hearts * PRO_CARE_CONFIG.HEART_COLLECTOR.csiPerHeart;
+    } else if (activeGame?.game_type === "EMPATHY_ECHO") {
+      newCsi += correctVotes * PRO_CARE_CONFIG.EMPATHY_ECHO.csiPerCorrect;
+    } else if (activeGame?.game_type === "SMILE_SPARKLE") {
+      // csiPerSmile is per customer helped (100 taps)
+      // OR we can calculate derived from total taps
+      const customers = Math.floor(smileTaps / PRO_CARE_CONFIG.SMILE_SPARKLE.tapsPerSmile);
+      newCsi += customers * PRO_CARE_CONFIG.SMILE_SPARKLE.csiPerSmile;
+      if (customers !== customersHelped) setCustomersHelped(customers);
+    }
+
+    setCsiScore(Math.min(100, newCsi));
+  }, [hearts, correctVotes, smileTaps, activeGame?.game_type]);
+
+  // ======================
+  // REALTIME SYNC
+  // ======================
   useEffect(() => {
     const channel = supabase
       .channel("pro-care-main")
@@ -147,12 +171,29 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
 
         if (game.is_active) {
           setActiveGame(game);
+
+          // Sync stats from DB (for Admin/Spectator view)
+          // Only overwrite if we are NOT the one checking (simple heuristic: if we are main stage, ALWAYS overwrite)
+          if (isMainStage) {
+            setHearts(game.hearts_collected);
+            setSmileTaps(game.smile_taps);
+            setCorrectVotes(game.correct_votes);
+            setTotalVotes(game.total_votes);
+          }
+
           const remain = Math.max(0, Math.floor((new Date(game.ends_at).getTime() - Date.now()) / 1000));
           setTimeRemaining(remain);
         } else if (activeGame?.id === game.id) {
           setActiveGame(null);
           setShowSummary(true);
-          onGameEnd?.(0); // Score calculation happens in endGame, this just triggers UI
+
+          // Calculate final score using the FINAL DB values
+          let finalScoreMB = 0;
+          if (game.game_type === "HEART_COLLECTOR") finalScoreMB = game.hearts_collected * 0.05;
+          if (game.game_type === "EMPATHY_ECHO") finalScoreMB = game.correct_votes * 0.2;
+          if (game.game_type === "SMILE_SPARKLE") finalScoreMB = game.smile_taps * 0.01;
+
+          onGameEnd?.(finalScoreMB);
         }
       })
       .subscribe();
@@ -160,7 +201,81 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeGame?.id, teamId, onGameEnd]);
+  }, [activeGame?.id, teamId, onGameEnd, isMainStage]);
+
+  // ======================
+  // BATCHED UPDATES (Player Action Sync)
+  // ======================
+  const pendingUpdates = useRef({ smiles: 0, hearts: 0, votes: 0, correct: 0 });
+  const flushTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const flushUpdates = useCallback(async () => {
+    if (!activeGame) return;
+    const { smiles, hearts: h, votes, correct } = pendingUpdates.current;
+    if (smiles === 0 && h === 0 && votes === 0) return;
+
+    // Reset pending
+    pendingUpdates.current = { smiles: 0, hearts: 0, votes: 0, correct: 0 };
+
+    // RPC or Delta update would be better, but standard update is what we have access to easily without sql tool
+    // We will use a fetch-update pattern which is imperfect but safer than blind update
+    try {
+      const { data: current, error } = await supabase
+        .from("pro_care_games")
+        .select("smile_taps, hearts_collected, total_votes, correct_votes")
+        .eq("id", activeGame.id)
+        .single();
+
+      if (current) {
+        await supabase.from("pro_care_games").update({
+          smile_taps: current.smile_taps + smiles,
+          hearts_collected: current.hearts_collected + h,
+          total_votes: current.total_votes + votes,
+          correct_votes: current.correct_votes + correct
+        }).eq("id", activeGame.id);
+      }
+    } catch (err) {
+      console.error("Error flushing updates", err);
+    }
+  }, [activeGame]);
+
+  // Handle Vote
+  const handleVote = (correct: boolean) => {
+    setTotalVotes(v => v + 1);
+    if (correct) setCorrectVotes(v => v + 1);
+
+    // Add to batch
+    pendingUpdates.current.votes += 1;
+    if (correct) pendingUpdates.current.correct += 1;
+
+    // Flush immediately for votes (low frequency)
+    flushUpdates();
+
+    setTimeout(() => {
+      const next = EMPATHY_SCENARIOS[Math.floor(Math.random() * EMPATHY_SCENARIOS.length)];
+      setCurrentScenario(next);
+    }, 2000);
+  };
+
+  // Handle Heart
+  const handleHeartCollect = () => {
+    setHearts(h => h + 1);
+    pendingUpdates.current.hearts += 1;
+
+    // Debounce flush
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(flushUpdates, 1000);
+  };
+
+  // Handle Smile
+  const handleSmileTap = () => {
+    setSmileTaps(t => t + 1);
+    pendingUpdates.current.smiles += 1;
+
+    // Debounce flush (high frequency)
+    if (flushTimer.current) clearTimeout(flushTimer.current);
+    flushTimer.current = setTimeout(flushUpdates, 1000);
+  };
 
   // ======================
   // START GAME
@@ -261,32 +376,6 @@ export function ProCareController({ teamId, playerNickname, isMainStage = false,
     setActiveGame(null);
     onGameEnd?.(scoreMB);
   }, [activeGame, hearts, correctVotes, smileTaps, teamId, onGameEnd]);
-
-  const handleVote = (correct: boolean) => {
-    setTotalVotes(v => v + 1);
-    if (correct) {
-      setCorrectVotes(v => v + 1);
-      setCsiScore(s => Math.min(100, s + PRO_CARE_CONFIG.EMPATHY_ECHO.csiPerCorrect));
-    }
-    // Pick next scenario after a delay
-    setTimeout(() => {
-      const next = EMPATHY_SCENARIOS[Math.floor(Math.random() * EMPATHY_SCENARIOS.length)];
-      setCurrentScenario(next);
-    }, 2000);
-  };
-
-  const handleHeartCollect = () => {
-    setHearts(h => h + 1);
-    setCsiScore(s => Math.min(100, s + PRO_CARE_CONFIG.HEART_COLLECTOR.csiPerHeart));
-  };
-
-  const handleSmileTap = () => {
-    setSmileTaps(t => t + 1);
-    if ((smileTaps + 1) % PRO_CARE_CONFIG.SMILE_SPARKLE.tapsPerSmile === 0) {
-      setCustomersHelped(c => c + 1);
-      setCsiScore(s => Math.min(100, s + PRO_CARE_CONFIG.SMILE_SPARKLE.csiPerSmile));
-    }
-  };
 
   // ======================
   // PLAYER VIEW
