@@ -31,6 +31,8 @@ export function DepartmentEfficiencyChain({
   const [multiplier, setMultiplier] = useState(1);
   const [leaderboard, setLeaderboard] = useState<Array<{ player: string; pathways: number }>>([]);
 
+  const [pathwayShuffles, setPathwayShuffles] = useState<Record<string, number[]>>({});
+
   // Sync timeLeft with durationSeconds from controller
   useEffect(() => {
     if (durationSeconds > 0) {
@@ -45,13 +47,25 @@ export function DepartmentEfficiencyChain({
     return () => clearInterval(timer);
   }, [timeLeft]);
 
-  // Initialize pathways with empty progress
+  // Initialize pathways and shuffle
   useEffect(() => {
     const initialProgress: Record<string, number[]> = {};
+    const initialShuffles: Record<string, number[]> = {};
+
     PATIENT_PATHWAYS.forEach((p) => {
       initialProgress[p.id] = [];
+
+      // Create and shuffle indices for this pathway
+      const indices = Array.from({ length: p.departments.length }, (_, i) => i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      initialShuffles[p.id] = indices;
     });
+
     setPathwayProgress(initialProgress);
+    setPathwayShuffles(initialShuffles);
   }, []);
 
   // Increase multiplier for consecutive pathways
@@ -108,12 +122,23 @@ export function DepartmentEfficiencyChain({
         setShowParticles(true);
         setTimeout(() => setShowParticles(false), 1000);
 
-        // Reset pathway
+        // Reset pathway AND reshuffle
         setTimeout(() => {
           setPathwayProgress((prev) => ({
             ...prev,
             [pathwayId]: [],
           }));
+
+          setPathwayShuffles((prev) => {
+            const newIndices = [...(prev[pathwayId] || [])];
+            // Reshuffle
+            for (let i = newIndices.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [newIndices[i], newIndices[j]] = [newIndices[j], newIndices[i]];
+            }
+            return { ...prev, [pathwayId]: newIndices };
+          });
+
           setFeedback('');
         }, 1000);
       } else {
@@ -167,6 +192,7 @@ export function DepartmentEfficiencyChain({
         {currentPathways.map((pathway) => {
           const progress = pathwayProgress[pathway.id] || [];
           const completionPercent = (progress.length / pathway.departments.length) * 100;
+          const currentShuffles = pathwayShuffles[pathway.id] || pathway.departments.map((_, i) => i);
 
           return (
             <div key={pathway.id} className="bg-black/30 rounded-lg p-3 border border-red-500/30 flex flex-col gap-2">
@@ -181,26 +207,28 @@ export function DepartmentEfficiencyChain({
                 </div>
               </div>
 
-              {/* Department Sequence */}
+              {/* Department Sequence (Randomized) */}
               <div className="flex flex-col gap-2">
-                {pathway.departments.map((dept, idx) => (
-                  <button
-                    key={dept.id}
-                    onClick={() => onDepartmentTap(pathway.id, idx)}
-                    disabled={timeLeft <= 0}
-                    className={cn(
-                      'w-full py-2 px-2 rounded flex items-center gap-2 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed',
-                      progress.includes(idx)
-                        ? 'bg-emerald-500/40 border border-emerald-400 text-emerald-100'
-                        : idx === progress.length
-                        ? 'bg-cyan-500/30 border border-cyan-400 text-cyan-100 hover:bg-cyan-500/50 animate-pulse'
-                        : 'bg-gray-700/40 border border-gray-600 text-gray-400'
-                    )}>
-                    <span className="text-lg">{dept.icon}</span>
-                    <span className="text-xs font-kanit flex-1 text-left">{dept.name}</span>
-                    {progress.includes(idx) && <span className="text-sm">✓</span>}
-                  </button>
-                ))}
+                {currentShuffles.map((logicalIdx) => {
+                  const dept = pathway.departments[logicalIdx];
+
+                  return (
+                    <button
+                      key={dept.id}
+                      onClick={() => onDepartmentTap(pathway.id, logicalIdx)}
+                      disabled={timeLeft <= 0}
+                      className={cn(
+                        'w-full py-2 px-2 rounded flex items-center gap-2 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed',
+                        progress.includes(logicalIdx)
+                          ? 'bg-emerald-500/40 border border-emerald-400 text-emerald-100'
+                          : 'bg-gray-700/40 border border-gray-600 text-gray-400 hover:border-orange-400/50' // Removed "next" hint
+                      )}>
+                      <span className="text-lg">{dept.icon}</span>
+                      <span className="text-xs font-kanit flex-1 text-left">{dept.name}</span>
+                      {progress.includes(logicalIdx) && <span className="text-sm">✓</span>}
+                    </button>
+                  )
+                })}
               </div>
 
               {/* Reward Info */}
