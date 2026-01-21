@@ -327,21 +327,54 @@ export function GrowPlusController({
       forceFlush();
     }
 
-    setGameActive(false);
-    await supabase.from("grow_plus_games").update({ is_active: false }).eq("id", activeGame.id);
+    // Wait a brief moment for batch inserts to settle
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Update Team Revenue Score (Main Balance)
-    // The batch buffer only logs history, we need to explicitly credit the team wallet
-    if (teamId && totalScore > 0) {
+    // 1. Calculate Authoritative Total Score from DB
+    let finalTotalScore = totalScore;
+
+    try {
+      const { data, error } = await supabase
+        .from("grow_plus_scores")
+        .select("score_value")
+        .eq("game_id", activeGame.id);
+
+      if (!error && data) {
+        const dbTotal = data.reduce((sum, row) => sum + row.score_value, 0);
+        console.log(`Final Score Audit: Local=${totalScore}, DB=${dbTotal}`);
+        finalTotalScore = dbTotal;
+      }
+    } catch (e) {
+      console.error("Error calculating final score:", e);
+    }
+
+    // 2. Close Game and Save Final Score to Game Record
+    setGameActive(false);
+    await supabase
+      .from("grow_plus_games")
+      .update({
+        is_active: false,
+        total_score: finalTotalScore
+      })
+      .eq("id", activeGame.id);
+
+    // 3. Update Team Revenue Score (Main Balance)
+    if (teamId && finalTotalScore > 0) {
       const { data } = await supabase.from("teams").select("revenue_score").eq("id", teamId).single();
       const currentRevenue = data?.revenue_score || 0;
 
       await supabase
         .from("teams")
-        .update({ revenue_score: currentRevenue + totalScore })
+        .update({ revenue_score: currentRevenue + finalTotalScore })
         .eq("id", teamId);
     }
-  }, [activeGame, enableBatchUpdates, forceFlush]);
+
+    // Update local state for summary display
+    setTotalScore(finalTotalScore);
+    setShowSummary(true);
+    onGameEnd?.(finalTotalScore);
+
+  }, [activeGame, enableBatchUpdates, forceFlush, totalScore, teamId, onGameEnd]);
 
   /* ---------- HANDLE TAP (Revenue Tap Game) ---------- */
   const handleTap = useCallback(async () => {
