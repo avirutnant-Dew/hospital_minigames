@@ -107,6 +107,12 @@ export function SafeActController({
       safetyScore = hazardsCleared * SAFE_ACT_CONFIG.HAZARD_POPPER.scorePerHazard;
     }
 
+    if (activeGame.game_type === "CRITICAL_SYNC") {
+      // Score based on taps (totalCorrect) to keep patient alive
+      // Using 50,000 per successful tap as a baseline
+      safetyScore = totalCorrect * 50000;
+    }
+
     await supabase
       .from("safe_act_games")
       .update({

@@ -329,6 +329,18 @@ export function GrowPlusController({
 
     setGameActive(false);
     await supabase.from("grow_plus_games").update({ is_active: false }).eq("id", activeGame.id);
+
+    // Update Team Revenue Score (Main Balance)
+    // The batch buffer only logs history, we need to explicitly credit the team wallet
+    if (teamId && totalScore > 0) {
+      const { data } = await supabase.from("teams").select("revenue_score").eq("id", teamId).single();
+      const currentRevenue = data?.revenue_score || 0;
+
+      await supabase
+        .from("teams")
+        .update({ revenue_score: currentRevenue + totalScore })
+        .eq("id", teamId);
+    }
   }, [activeGame, enableBatchUpdates, forceFlush]);
 
   /* ---------- HANDLE TAP (Revenue Tap Game) ---------- */

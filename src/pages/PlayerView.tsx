@@ -487,6 +487,9 @@ export default function PlayerView() {
     }
   };
 
+  // New state for question queue
+  const [questionQueue, setQuestionQueue] = useState<ChallengeQuestion[]>([]);
+
   const handleDrawCard = async () => {
     if (!selectedTeam) return;
 
@@ -524,41 +527,51 @@ export default function PlayerView() {
       setHasRolledDice(false);
 
     } else if (currentTileType === "challenge") {
-      // Challenge Tile: Fetch random question from database
+      // Challenge Tile: Fetch 3 random questions from database
       const { data: questions } = await supabase
         .from("challenge_questions")
         .select("*");
 
       if (questions && questions.length > 0) {
-        const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
+        // Shuffle and pick 3
+        const shuffled = shuffleArray([...questions]);
+        const selectedQuestions = shuffled.slice(0, 3);
 
-        // Parse options from JSON
-        let optionsArray: string[] = [];
-        if (Array.isArray(randomQuestion.options)) {
-          optionsArray = randomQuestion.options as string[];
-        } else if (typeof randomQuestion.options === "object" && randomQuestion.options !== null) {
-          optionsArray = Object.values(randomQuestion.options as Record<string, string>);
+        if (selectedQuestions.length > 0) {
+          const formatQuestion = (q: any): ChallengeQuestion => {
+            let optionsArray: string[] = [];
+            if (Array.isArray(q.options)) {
+              optionsArray = q.options as string[];
+            } else if (typeof q.options === "object" && q.options !== null) {
+              optionsArray = Object.values(q.options as Record<string, string>);
+            }
+            return {
+              id: q.id,
+              category: q.category,
+              question: q.question,
+              options: optionsArray,
+              correct_answer: q.correct_answer || "",
+              points: q.points,
+            };
+          };
+
+          const firstQ = formatQuestion(selectedQuestions[0]);
+          const remainingQs = selectedQuestions.slice(1).map(formatQuestion);
+
+          setCurrentQuestion(firstQ);
+          setQuestionQueue(remainingQs);
+
+          // Add news
+          await supabase.from("news_ticker").insert({
+            message: `❓ ${selectedTeam.name} เริ่มทำ Challenge 3 ข้อ!`,
+            team_id: selectedTeam.id,
+          });
+
+          // Note: We don't reset dice yet, wait until all questions done
         }
-
-        setCurrentQuestion({
-          id: randomQuestion.id,
-          category: randomQuestion.category,
-          question: randomQuestion.question,
-          options: optionsArray,
-          correct_answer: randomQuestion.correct_answer || "",
-          points: randomQuestion.points,
-        });
-
-        // Add news
-        await supabase.from("news_ticker").insert({
-          message: `❓ ${selectedTeam.name} ได้รับคำถาม Challenge!`,
-          team_id: selectedTeam.id,
-        });
-
-        // Reset dice state after action
-        setHasRolledDice(false);
       } else {
         toast.error("ไม่พบคำถามในระบบ");
+        setHasRolledDice(false);
       }
 
     } else {
@@ -674,15 +687,35 @@ export default function PlayerView() {
         message: `🎉 ${selectedTeam.name} ตอบถูก! ได้ ${moneyDisplay}M บาท`,
         team_id: selectedTeam.id,
       });
+
+      toast.success(`เก่งมาก! รับไป ${moneyDisplay}M`);
     } else {
       // Add news for wrong answer
       await supabase.from("news_ticker").insert({
-        message: `😅 ${selectedTeam.name} ตอบผิด! ลองใหม่รอบหน้า`,
+        message: `😅 ${selectedTeam.name} ตอบผิด!`,
         team_id: selectedTeam.id,
       });
+      toast.error("ตอบผิดจ้า!");
     }
 
-    setCurrentQuestion(null);
+    // CHECK QUEUE FOR NEXT QUESTION
+    if (questionQueue.length > 0) {
+      // Pop next question
+      const nextQ = questionQueue[0];
+      const newQueue = questionQueue.slice(1);
+
+      // Small delay for UX
+      setTimeout(() => {
+        setQuestionQueue(newQueue);
+        setCurrentQuestion(nextQ);
+        toast.info(`คำถามต่อไป (${3 - newQueue.length}/3)`);
+      }, 1000);
+    } else {
+      // No more questions
+      setCurrentQuestion(null);
+      setHasRolledDice(false); // Reset dice only after all questions are done
+      toast.success("จบ Challenge รอบนี้แล้ว!");
+    }
   };
 
   // Loading screen while checking session
